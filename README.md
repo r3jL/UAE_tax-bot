@@ -4,7 +4,7 @@ An AI assistant that answers UAE **VAT & Corporate Tax** questions for Sobha —
 grounded in official FTA law, **every answer cited**, decision-support only
 (a human reviews; the bot never files anything).
 
-> Internal · Finance & Accounts / MD's Office · UAE-first
+> Internal · Finance & Accounts / MD's Office · UAE only
 
 ## What it does (Phase 1)
 - **Cited Q&A** on UAE VAT + Corporate Tax (answers trace to the actual Decree-Law / Decision / Guide)

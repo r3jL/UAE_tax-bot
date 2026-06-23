@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  textarea, input, select, button { font-family: inherit; }
+  textarea:focus, select:focus { outline: none; }
+  @keyframes lexspin { to { transform: rotate(360deg); } }
+  @keyframes lexrise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+<div style="min-width:100%;min-height:100vh;box-sizing:border-box;padding:48px;background:#e7e5df;width:max-content;font-family:'IBM Plex Sans',-apple-system,sans-serif;">
+  <div style="margin-bottom:36px;">
+    <div style="font-size:13px;font-weight:600;letter-spacing:.04em;color:#3a3f47;">Project Lex — two directions to compare</div>
+    <div style="font-size:13px;color:#7c8088;margin-top:4px;">Both are fully interactive. Type a question or pick an example; each demonstrates answered / flagged / low-confidence / escalation states.</div>
+  </div>
+
+  <div style="display:flex;gap:48px;align-items:flex-start;">
+
+    <!-- ============ DIRECTION A — COUNSEL ============ -->
+    <div style="flex:none;width:760px;">
+      <div style="font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#6b6f76;margin-bottom:12px;">Direction A · Counsel</div>
+      <div style="background:#fff;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.10);overflow:hidden;">
+        <div style="background:#fbfaf7;padding:44px 48px;">
+
+          <!-- header -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
+            <div>
+              <div style="font-size:11px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:#a8884e;">UAE Corporate Tax &amp; VAT · Decision Support</div>
+              <h1 style="font-family:'Source Serif 4',serif;font-weight:600;font-size:42px;line-height:1.05;color:#16294d;margin:10px 0 0;letter-spacing:-.01em;">Project&nbsp;Lex</h1>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;flex:none;margin-top:6px;border:1px solid #e3ddd0;background:#fff;border-radius:2px;padding:7px 11px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:#a8884e;flex:none;"></span>
+              <span style="font-size:11.5px;color:#6f6a5d;line-height:1.3;max-width:160px;">Decision-support only — a human reviews before use.</span>
+            </div>
+          </div>
+          <p style="font-family:'Source Serif 4',serif;font-size:17px;line-height:1.5;color:#4a525f;margin:16px 0 0;max-width:560px;">Grounded answers from official UAE FTA law, with citations — or an honest escalation when the law can't settle it.</p>
+          <div style="height:1px;background:linear-gradient(90deg,#a8884e,#e3ddd0 60%,transparent);margin:26px 0 0;"></div>
+
+          <!-- input -->
+          <div style="margin-top:30px;">
+            <label style="display:block;font-size:12.5px;font-weight:600;letter-spacing:.02em;color:#3a3f47;margin-bottom:9px;">Your question</label>
+            <textarea value="{{ a.q }}" onInput="{{ onQA }}" placeholder="Is the first sale of a new residential building zero-rated for VAT?" rows="3" style="width:100%;border:1px solid #d8d2c4;border-radius:3px;background:#fff;padding:14px 16px;font-size:16px;line-height:1.5;color:#1f2630;resize:vertical;font-family:'Source Serif 4',serif;"></textarea>
+            <div style="display:flex;gap:12px;align-items:stretch;margin-top:14px;">
+              <div style="position:relative;flex:none;">
+                <select value="{{ a.filter }}" onChange="{{ onFilterA }}" style="appearance:none;-webkit-appearance:none;border:1px solid #d8d2c4;border-radius:3px;background:#fff;padding:0 38px 0 14px;height:46px;font-size:14.5px;color:#2a313b;font-weight:500;cursor:pointer;">
+                  <option>All</option>
+                  <option>Corporate Tax</option>
+                  <option>VAT</option>
+                </select>
+                <span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);pointer-events:none;color:#8a8576;font-size:11px;">▾</span>
+              </div>
+              <button onClick="{{ askA }}" disabled="{{ a.loading }}" style="flex:1;height:46px;border:none;border-radius:3px;background:#16294d;color:#fff;font-size:15px;font-weight:600;letter-spacing:.02em;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;">
+                <sc-if value="{{ a.loading }}" hint-placeholder-val="{{ false }}"><span style="width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:lexspin .7s linear infinite;"></span></sc-if>
+                <span>{{ a.btnLabel }}</span>
+              </button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px;">
+              <span style="font-size:12px;color:#8a8576;font-weight:500;margin-right:2px;">Try an example</span>
+              <sc-for list="{{ a.examples }}" as="ex" hint-placeholder-count="4">
+                <button onClick="{{ ex.pick }}" style="border:1px solid #e0dac9;background:#fff;border-radius:99px;padding:7px 13px;font-size:12.5px;color:#4a525f;cursor:pointer;font-weight:500;">{{ ex.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- results -->
+          <div style="margin-top:30px;">
+            <sc-if value="{{ a.showCard }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid #e7e1d3;border-radius:4px;background:#fff;padding:28px 30px;animation:lexrise .35s ease both;">
+
+                <!-- status row -->
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:1px solid #f0ece1;padding-bottom:16px;">
+                  <div style="font-family:'Source Serif 4',serif;font-size:20px;font-weight:600;color:#16294d;">{{ a.headline }}</div>
+                  <sc-if value="{{ a.showConfidence }}" hint-placeholder-val="{{ true }}">
+                    <span style="display:inline-flex;align-items:center;gap:7px;border-radius:99px;padding:5px 12px;font-size:12.5px;font-weight:600;color:{{ a.confColor }};background:{{ a.confBg }};border:1px solid {{ a.confBorder }};">
+                      <span style="width:7px;height:7px;border-radius:50%;background:{{ a.confDot }};"></span>{{ a.confLabel }}
+                    </span>
+                  </sc-if>
+                  <sc-if value="{{ a.isEscalate }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:inline-flex;align-items:center;gap:7px;border-radius:99px;padding:5px 12px;font-size:12.5px;font-weight:600;color:#8a5a16;background:#fbf1da;border:1px solid #ecd9a8;">↑ Escalated to review</span>
+                  </sc-if>
+                </div>
+
+                <!-- escalate body -->
+                <sc-if value="{{ a.isEscalate }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:18px;border-left:3px solid #cf9a2a;background:#fdf8ee;border-radius:0 4px 4px 0;padding:16px 18px;">
+                    <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8a5a16;margin-bottom:6px;">Why this needs a human</div>
+                    <div style="font-size:15px;line-height:1.65;color:#4a4334;">{{ a.escalationReason }}</div>
+                  </div>
+                </sc-if>
+
+                <!-- answered body -->
+                <sc-if value="{{ a.isAnswered }}" hint-placeholder-val="{{ true }}">
+                  <sc-if value="{{ a.hasFlag }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-top:18px;border-left:3px solid #cf9a2a;background:#fdf6e9;border-radius:0 4px 4px 0;padding:14px 18px;display:flex;gap:11px;">
+                      <span style="font-size:15px;flex:none;line-height:1.4;">⚠</span>
+                      <div>
+                        <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8a5a16;margin-bottom:4px;">Check this assumption</div>
+                        <div style="font-size:14.5px;line-height:1.6;color:#5a4f37;">{{ a.flaggedPremise }}</div>
+                      </div>
+                    </div>
+                  </sc-if>
+                  <div style="margin-top:18px;">
+                    <sc-for list="{{ a.answerParas }}" as="para" hint-placeholder-count="2">
+                      <p style="font-size:16px;line-height:1.72;color:#2a313b;margin:0 0 13px;">{{ para }}</p>
+                    </sc-for>
+                  </div>
+                </sc-if>
+
+                <!-- reasoning -->
+                <div style="margin-top:6px;">
+                  <button onClick="{{ toggleRA }}" style="border:none;background:none;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600;color:#16294d;display:inline-flex;align-items:center;gap:7px;">
+                    <span style="font-size:10px;width:10px;display:inline-block;">{{ a.reasoningArrow }}</span>{{ a.reasoningLabel }}
+                  </button>
+                  <sc-if value="{{ a.showReasoning }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-top:8px;border:1px solid #eee8da;background:#faf8f2;border-radius:4px;padding:16px 18px;">
+                      <sc-for list="{{ a.reasoningLines }}" as="line" hint-placeholder-count="4">
+                        <div style="font-size:14px;line-height:1.6;color:#525a66;margin-bottom:6px;font-family:'Source Serif 4',serif;">{{ line }}</div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+
+                <!-- sources -->
+                <sc-if value="{{ a.hasCitations }}" hint-placeholder-val="{{ true }}">
+                  <div style="margin-top:22px;border-top:1px solid #f0ece1;padding-top:18px;">
+                    <div style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#9a9382;margin-bottom:12px;">Sources</div>
+                    <sc-for list="{{ a.citations }}" as="c" hint-placeholder-count="2">
+                      <div style="display:flex;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid #f5f2e9;">
+                        <span style="font-weight:700;color:#16294d;font-size:14.5px;flex:none;">{{ c.articleRef }}</span>
+                        <span style="font-size:12.5px;color:#a39c8b;flex:1;">Effective {{ c.effectiveDate }}</span>
+                        <a href="{{ c.sourceUrl }}" target="_blank" rel="noopener" style="font-size:13px;color:#a8884e;font-weight:600;text-decoration:none;flex:none;">source ↗</a>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+
+              </div>
+            </sc-if>
+            <sc-if value="{{ a.empty }}" hint-placeholder-val="{{ true }}">
+              <div style="border:1px dashed #ddd6c6;border-radius:4px;padding:34px 30px;text-align:center;color:#a8a292;">
+                <div style="font-family:'Source Serif 4',serif;font-size:16px;color:#7d7868;">Answers appear here</div>
+                <div style="font-size:13.5px;margin-top:5px;">Grounded in UAE FTA law, with citations — or escalated when it can't be settled.</div>
+              </div>
+            </sc-if>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ DIRECTION B — WORKSPACE ============ -->
+    <div style="flex:none;width:760px;">
+      <div style="font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#6b6f76;margin-bottom:12px;">Direction B · Workspace</div>
+      <div style="background:#eef2f7;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.10);overflow:hidden;padding:28px;">
+
+        <!-- header bar -->
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:16px;box-shadow:0 1px 2px rgba(20,40,80,.04);">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="width:42px;height:42px;border-radius:10px;background:#16294d;display:flex;align-items:center;justify-content:center;flex:none;">
+              <span style="font-family:'Source Serif 4',serif;font-weight:600;font-size:20px;color:#fff;">Lx</span>
+            </div>
+            <div>
+              <div style="font-family:'Source Serif 4',serif;font-size:21px;font-weight:600;color:#16294d;line-height:1.1;">Project Lex</div>
+              <div style="font-size:12.5px;color:#64748b;margin-top:2px;">UAE Corporate Tax &amp; VAT assistant</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:7px;flex:none;background:#f1f5f9;border-radius:8px;padding:8px 12px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:#2c5cc5;flex:none;"></span>
+            <span style="font-size:11.5px;color:#5a6b82;line-height:1.3;max-width:150px;">Decision-support only — a human reviews before use.</span>
+          </div>
+        </div>
+
+        <!-- ask card -->
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:22px;margin-top:18px;box-shadow:0 1px 2px rgba(20,40,80,.04);">
+          <label style="display:block;font-size:12.5px;font-weight:600;color:#334155;margin-bottom:9px;">Ask a tax question</label>
+          <textarea value="{{ b.q }}" onInput="{{ onQB }}" placeholder="Is the first sale of a new residential building zero-rated for VAT?" rows="3" style="width:100%;border:1px solid #d5dde7;border-radius:9px;background:#f8fafc;padding:13px 15px;font-size:15.5px;line-height:1.5;color:#1e293b;resize:vertical;"></textarea>
+          <div style="display:flex;gap:10px;align-items:stretch;margin-top:12px;">
+            <div style="position:relative;flex:none;">
+              <select value="{{ b.filter }}" onChange="{{ onFilterB }}" style="appearance:none;-webkit-appearance:none;border:1px solid #d5dde7;border-radius:9px;background:#fff;padding:0 36px 0 14px;height:44px;font-size:14px;color:#334155;font-weight:500;cursor:pointer;">
+                <option>All</option>
+                <option>Corporate Tax</option>
+                <option>VAT</option>
+              </select>
+              <span style="position:absolute;right:13px;top:50%;transform:translateY(-50%);pointer-events:none;color:#94a3b8;font-size:11px;">▾</span>
+            </div>
+            <button onClick="{{ askB }}" disabled="{{ b.loading }}" style="flex:1;height:44px;border:none;border-radius:9px;background:#2c5cc5;color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;">
+              <sc-if value="{{ b.loading }}" hint-placeholder-val="{{ false }}"><span style="width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:lexspin .7s linear infinite;"></span></sc-if>
+              <span>{{ b.btnLabel }}</span>
+            </button>
+          </div>
+          <div style="margin-top:16px;border-top:1px solid #eef2f7;padding-top:14px;">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:9px;">Common questions</div>
+            <sc-for list="{{ b.examples }}" as="ex" hint-placeholder-count="4">
+              <button onClick="{{ ex.pick }}" style="width:100%;text-align:left;border:none;background:none;padding:9px 10px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;" style-hover="background:#f4f7fb;">
+                <span style="font-size:13.5px;color:#334155;font-weight:500;">{{ ex.label }}</span>
+                <span style="font-size:11px;font-weight:600;color:#2c5cc5;background:#eef3fc;border-radius:5px;padding:2px 7px;flex:none;">{{ ex.filterLabel }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- results card -->
+        <sc-if value="{{ b.showCard }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;margin-top:18px;box-shadow:0 1px 2px rgba(20,40,80,.04);animation:lexrise .35s ease both;">
+
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;">
+              <div style="font-size:13px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;">{{ b.headline }}</div>
+              <sc-if value="{{ b.showConfidence }}" hint-placeholder-val="{{ true }}">
+                <span style="display:inline-flex;align-items:center;gap:7px;border-radius:99px;padding:5px 12px;font-size:12.5px;font-weight:600;color:{{ b.confColor }};background:{{ b.confBg }};border:1px solid {{ b.confBorder }};">
+                  <span style="width:7px;height:7px;border-radius:50%;background:{{ b.confDot }};"></span>{{ b.confLabel }}
+                </span>
+              </sc-if>
+              <sc-if value="{{ b.isEscalate }}" hint-placeholder-val="{{ false }}">
+                <span style="display:inline-flex;align-items:center;gap:7px;border-radius:99px;padding:5px 12px;font-size:12.5px;font-weight:600;color:#8a5a16;background:#fbf1da;border:1px solid #ecd9a8;">↑ Escalated to review</span>
+              </sc-if>
+            </div>
+
+            <sc-if value="{{ b.isEscalate }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:16px;border:1px solid #f0e0bd;background:#fdf8ee;border-radius:10px;padding:16px 18px;">
+                <div style="font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8a5a16;margin-bottom:6px;">Why this needs a human</div>
+                <div style="font-size:15px;line-height:1.65;color:#4a4334;">{{ b.escalationReason }}</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ b.isAnswered }}" hint-placeholder-val="{{ true }}">
+              <sc-if value="{{ b.hasFlag }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:16px;border:1px solid #f0e0bd;background:#fdf6e9;border-radius:10px;padding:14px 16px;display:flex;gap:11px;">
+                  <span style="font-size:15px;flex:none;line-height:1.4;">⚠</span>
+                  <div>
+                    <div style="font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8a5a16;margin-bottom:4px;">Check this assumption</div>
+                    <div style="font-size:14px;line-height:1.6;color:#5a4f37;">{{ b.flaggedPremise }}</div>
+                  </div>
+                </div>
+              </sc-if>
+              <div style="margin-top:16px;">
+                <sc-for list="{{ b.answerParas }}" as="para" hint-placeholder-count="2">
+                  <p style="font-size:15.5px;line-height:1.72;color:#1e293b;margin:0 0 13px;">{{ para }}</p>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <div style="margin-top:6px;">
+              <button onClick="{{ toggleRB }}" style="border:none;background:none;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600;color:#2c5cc5;display:inline-flex;align-items:center;gap:7px;">
+                <span style="font-size:10px;width:10px;display:inline-block;">{{ b.reasoningArrow }}</span>{{ b.reasoningLabel }}
+              </button>
+              <sc-if value="{{ b.showReasoning }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:8px;border:1px solid #e8eef6;background:#f6f9fd;border-radius:10px;padding:16px 18px;">
+                  <sc-for list="{{ b.reasoningLines }}" as="line" hint-placeholder-count="4">
+                    <div style="font-size:13.5px;line-height:1.6;color:#475569;margin-bottom:6px;">{{ line }}</div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+
+            <sc-if value="{{ b.hasCitations }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-top:20px;border-top:1px solid #eef2f7;padding-top:16px;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8;margin-bottom:11px;">Sources</div>
+                <sc-for list="{{ b.citations }}" as="c" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:12px;padding:9px 11px;background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;margin-bottom:8px;">
+                    <span style="font-weight:700;color:#16294d;font-size:14px;flex:none;">{{ c.articleRef }}</span>
+                    <span style="font-size:12.5px;color:#94a3b8;flex:1;">Effective {{ c.effectiveDate }}</span>
+                    <a href="{{ c.sourceUrl }}" target="_blank" rel="noopener" style="font-size:13px;color:#2c5cc5;font-weight:600;text-decoration:none;flex:none;">source ↗</a>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+          </div>
+        </sc-if>
+        <sc-if value="{{ b.empty }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px dashed #cdd7e3;border-radius:12px;padding:30px;text-align:center;color:#94a3b8;margin-top:18px;background:#f8fafc;">
+            <div style="font-size:14.5px;color:#64748b;font-weight:500;">Answers appear here</div>
+            <div style="font-size:13px;margin-top:4px;">Grounded in UAE FTA law with citations — or escalated when it can't be settled.</div>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    a: { q: '', filter: 'All', loading: false, resp: null, showReasoning: false },
+    b: { q: '', filter: 'All', loading: false, resp: null, showReasoning: false },
+  };
+
+  samples = [
+    {
+      key: 'residential', label: 'First supply of residential', filter: 'VAT',
+      q: 'Is the first sale of a new residential building zero-rated for VAT?',
+      resp: {
+        status: 'answered', confidence: 'high', flaggedPremise: null, escalationReason: null,
+        answer: 'Yes. The first supply of a newly constructed residential building is zero-rated for VAT, provided the supply is made within three years of the building\u2019s completion. This applies whether the first supply is by sale or by lease.\n\nBecause the first supply is zero-rated rather than exempt, the developer can recover input VAT incurred on the construction, subject to the normal input-tax recovery rules. Note that any subsequent supply of the same residential building is exempt, not zero-rated.',
+        reasoning: '1. Identify the supply: the first sale of a newly built residential building.\n2. VAT treatment of residential property turns on whether it is the \u201cfirst supply.\u201d\n3. Art. 45(9) of the VAT Decree-Law zero-rates the first supply of residential buildings made within 3 years of completion.\n4. Executive Regulation Art. 41 confirms the 3-year window and that the first supply may be by sale or lease.\n5. Conclusion: zero-rated, with input-tax recovery on construction costs.',
+        citations: [
+          { articleRef: 'Article 45(9)', effectiveDate: '2018-01-01', sourceUrl: 'https://tax.gov.ae/' },
+          { articleRef: 'Exec. Regulation Art. 41', effectiveDate: '2018-01-01', sourceUrl: 'https://tax.gov.ae/' },
+        ],
+      },
+    },
+    {
+      key: 'car', label: 'Input VAT on a company car', filter: 'VAT',
+      q: 'Can we recover the input VAT on the company car bought for the sales director\u2019s personal use?',
+      resp: {
+        status: 'answered', confidence: 'medium', escalationReason: null,
+        flaggedPremise: 'Your question assumes the car is available for the director\u2019s personal use. Input VAT on a motor vehicle that is available for personal use is specifically blocked \u2014 so that detail changes the answer.',
+        answer: 'No \u2014 not where the vehicle is available for personal use. Input VAT incurred on the purchase of a motor vehicle is non-recoverable if the vehicle is available for the personal use of any person.\n\nInput tax is only recoverable where the motor vehicle is used exclusively for business \u2014 for example a pool car not allocated to an individual, a taxi, or a vehicle used in a vehicle-rental business. A car allocated to the sales director and available for personal use falls outside that exception.',
+        reasoning: '1. The expense is the purchase of a motor vehicle.\n2. Executive Regulation Art. 53 blocks input tax on motor vehicles available for personal use.\n3. Exception: vehicles used exclusively for business (pool cars, taxis, rental fleet, emergency vehicles).\n4. The stated personal use by the director removes the exclusive-business exception.\n5. Conclusion: input VAT is blocked.',
+        citations: [
+          { articleRef: 'Exec. Regulation Art. 53', effectiveDate: '2018-01-01', sourceUrl: 'https://tax.gov.ae/' },
+        ],
+      },
+    },
+    {
+      key: 'freezone', label: 'Free Zone rental income', filter: 'Corporate Tax',
+      q: 'Does rental income from our Free Zone property count as Qualifying Income taxed at 0%?',
+      resp: {
+        status: 'answered', confidence: 'low', flaggedPremise: null, escalationReason: null,
+        answer: 'Likely not at 0% \u2014 but this depends on specifics that should be confirmed. Income from immovable property located in a Free Zone is treated differently by property type and counterparty. Income from commercial property transacted with other Free Zone Persons can be Qualifying Income; income from non-commercial property, or from non-Free Zone persons, is generally excluded and taxed at 9%.\n\nBecause the 0% treatment hinges on the property\u2019s classification and the tenant, this answer is low-confidence without those details.',
+        reasoning: '1. The Qualifying Free Zone Person regime taxes Qualifying Income at 0%.\n2. Cabinet Decision 100 of 2023 sets out qualifying and excluded activities.\n3. Immovable-property income is generally an Excluded Activity \u2014 with a carve-out for commercial property transacted with Free Zone Persons.\n4. The classification here is ambiguous: property type? tenant?\n5. Conclusion: probably 9%, but low confidence pending the missing facts.',
+        citations: [
+          { articleRef: 'CT Law Art. 18', effectiveDate: '2023-06-01', sourceUrl: 'https://tax.gov.ae/' },
+          { articleRef: 'Cabinet Decision 100/2023', effectiveDate: '2023-06-01', sourceUrl: 'https://tax.gov.ae/' },
+        ],
+      },
+    },
+    {
+      key: 'loan', label: 'Intercompany loan pricing', filter: 'Corporate Tax',
+      q: 'How should we price the intercompany loan from our Cyprus parent to stay transfer-pricing compliant?',
+      resp: {
+        status: 'escalate', confidence: 'low', flaggedPremise: null, answer: '',
+        escalationReason: 'This needs an arm\u2019s-length benchmarking analysis of a specific related-party loan and touches a non-UAE jurisdiction (Cyprus). It can\u2019t be grounded in UAE FTA law text alone and involves facts and treaty matters outside this tool\u2019s scope. Routed to the finance team for review.',
+        reasoning: '1. The question concerns arm\u2019s-length pricing of a cross-border related-party loan.\n2. UAE TP rules (CT Law Arts. 34\u201336) require arm\u2019s-length terms, but the specific rate depends on facts not in published guidance.\n3. Determining a compliant rate requires a benchmarking study \u2014 not answerable from law text alone.\n4. Cross-jurisdiction (Cyprus) treaty considerations are outside UAE-only scope.\n5. Conclusion: escalate to the finance team.',
+        citations: [],
+      },
+    },
+  ];
+
+  fallback = {
+    status: 'escalate', confidence: 'low', flaggedPremise: null, answer: '',
+    escalationReason: 'I couldn\u2019t find UAE FTA law text that grounds this question with enough confidence to answer it. Rather than guess, I\u2019ve routed it to the finance team for review.',
+    reasoning: '1. Attempted to match the question to grounding provisions in the UAE VAT and Corporate Tax law.\n2. No provision settles the question with sufficient confidence.\n3. Per policy, an ungrounded answer is escalated rather than estimated.',
+    citations: [],
+  };
+
+  setApp(app, patch) { this.setState(s => ({ [app]: { ...s[app], ...patch } })); }
+
+  pick(app, key) {
+    const s = this.samples.find(x => x.key === key);
+    if (s) this.setApp(app, { q: s.q, filter: s.filter, resp: null, showReasoning: false });
+  }
+
+  resolve(q) {
+    const t = q.trim().toLowerCase();
+    let s = this.samples.find(x => x.q.toLowerCase() === t);
+    if (!s) {
+      if (/residential|first supply|first sale|building/.test(t)) s = this.samples.find(x => x.key === 'residential');
+      else if (/\bcar\b|vehicle|motor/.test(t)) s = this.samples.find(x => x.key === 'car');
+      else if (/free.?zone|qualifying/.test(t)) s = this.samples.find(x => x.key === 'freezone');
+      else if (/loan|transfer.?pric|intercompany|related.?party|arm.?s.?length/.test(t)) s = this.samples.find(x => x.key === 'loan');
+    }
+    return s ? s.resp : this.fallback;
+  }
+
+  ask(app) {
+    const st = this.state[app];
+    if (!st.q.trim() || st.loading) return;
+    const resp = this.resolve(st.q);
+    this.setApp(app, { loading: true });
+    setTimeout(() => this.setApp(app, { loading: false, resp, showReasoning: false }), 850);
+  }
+
+  buildView(app) {
+    const st = this.state[app];
+    const r = st.resp;
+    const confMap = {
+      high: { label: 'High confidence', color: '#1f7a4d', bg: '#e9f4ee', border: '#bfe0cc', dot: '#2f9e63' },
+      medium: { label: 'Medium confidence', color: '#946011', bg: '#fbf1da', border: '#ecd9a8', dot: '#cf9a2a' },
+      low: { label: 'Low confidence', color: '#a23a2e', bg: '#f8e8e5', border: '#eccac3', dot: '#cf5544' },
+    };
+    const isEsc = !!r && r.status === 'escalate';
+    const isAns = !!r && r.status === 'answered';
+    const c = r && confMap[r.confidence] ? confMap[r.confidence] : confMap.low;
+    return {
+      q: st.q, filter: st.filter, loading: st.loading,
+      btnLabel: st.loading ? 'Thinking\u2026' : 'Ask',
+      showCard: !!r, empty: !r,
+      isEscalate: isEsc, isAnswered: isAns,
+      showConfidence: isAns,
+      headline: isEsc ? 'Escalation' : 'Answer',
+      confLabel: c.label, confColor: c.color, confBg: c.bg, confBorder: c.border, confDot: c.dot,
+      hasFlag: !!(r && r.flaggedPremise),
+      flaggedPremise: r ? r.flaggedPremise : null,
+      answerParas: r && r.answer ? r.answer.split('\n\n') : [],
+      reasoningLines: r && r.reasoning ? r.reasoning.split('\n') : [],
+      citations: r ? r.citations : [],
+      hasCitations: !!(r && r.citations && r.citations.length),
+      escalationReason: r ? r.escalationReason : null,
+      showReasoning: st.showReasoning,
+      reasoningLabel: st.showReasoning ? 'Hide reasoning' : 'Show reasoning',
+      reasoningArrow: st.showReasoning ? '\u25be' : '\u25b8',
+      examples: this.samples.map(s => ({ key: s.key, label: s.label, filterLabel: s.filter, pick: () => this.pick(app, s.key) })),
+    };
+  }
+
+  renderVals() {
+    return {
+      a: this.buildView('a'),
+      b: this.buildView('b'),
+      onQA: (e) => this.setApp('a', { q: e.target.value }),
+      onQB: (e) => this.setApp('b', { q: e.target.value }),
+      onFilterA: (e) => this.setApp('a', { filter: e.target.value }),
+      onFilterB: (e) => this.setApp('b', { filter: e.target.value }),
+      askA: () => this.ask('a'),
+      askB: () => this.ask('b'),
+      toggleRA: () => this.setApp('a', { showReasoning: !this.state.a.showReasoning }),
+      toggleRB: () => this.setApp('b', { showReasoning: !this.state.b.showReasoning }),
+    };
+  }
+}
+</script>
+</body>
+</html>

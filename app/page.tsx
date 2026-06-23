@@ -1,184 +1,651 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Sidebar } from "./_components/sidebar";
+import { Topbar } from "./_components/topbar";
+import { PlannedModules } from "./_components/planned-modules";
+import { Drawer } from "./_components/drawer";
+import {
+  CONF_MAP,
+  SAMPLES,
+  SERIF,
+  filterToTaxType,
+  resolveSample,
+  type AnswerResult,
+  type Message,
+  type ModuleKey,
+  type QueueItem,
+  type Role,
+  type TaxFilter,
+} from "./_lib/lex-data";
 
-interface Citation {
-  chunkId: number;
-  articleRef: string;
-  sourceUrl: string;
-  effectiveDate: string | null;
-}
-
-interface AnswerResult {
-  status: "answered" | "escalate";
-  answer: string;
-  reasoning: string;
-  citations: Citation[];
-  confidence: "high" | "medium" | "low";
-  flaggedPremise: string | null;
-  escalationReason: string | null;
-  error?: string;
-}
-
-const CONFIDENCE_STYLES: Record<string, string> = {
-  high: "bg-green-100 text-green-800",
-  medium: "bg-amber-100 text-amber-800",
-  low: "bg-red-100 text-red-800",
-};
-
-export default function Home() {
-  const [question, setQuestion] = useState("");
-  const [taxType, setTaxType] = useState<"" | "CT" | "VAT">("");
+export default function Workspace() {
+  const [module, setModule] = useState<ModuleKey>("ask");
+  const [role, setRole] = useState<Role>("staff");
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<TaxFilter>("All");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<AnswerResult | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [drawer, setDrawer] = useState<QueueItem | null>(null);
 
-  async function ask(e: React.FormEvent) {
-    e.preventDefault();
-    if (!question.trim() || loading) return;
+  const threadRef = useRef<HTMLDivElement>(null);
+
+  // Keep the thread pinned to the latest message, like the comp.
+  useEffect(() => {
+    if (module === "ask" && threadRef.current) {
+      threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    }
+  }, [messages, loading, module]);
+
+  async function send(text: string, filterOverride?: TaxFilter) {
+    const trimmed = text.trim();
+    if (!trimmed || loading) return;
+    const effFilter = filterOverride ?? filter;
+
+    setQ("");
+    if (filterOverride) setFilter(filterOverride);
+    setMessages((m) => [...m, { role: "user", text: trimmed }]);
     setLoading(true);
-    setResult(null);
+
+    let resp: AnswerResult;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, taxType: taxType || undefined }),
+        body: JSON.stringify({
+          question: trimmed,
+          taxType: filterToTaxType(effFilter),
+        }),
       });
-      setResult(await res.json());
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error ?? "Request failed");
+      resp = data as AnswerResult;
     } catch {
-      setResult({
-        status: "escalate",
-        answer: "",
-        reasoning: "",
-        citations: [],
-        confidence: "low",
-        flaggedPremise: null,
-        escalationReason: null,
-        error: "Request failed. Is the server running and configured?",
-      });
-    } finally {
-      setLoading(false);
+      // Offline / unconfigured backend: fall back to the canned sample matcher
+      // so the workspace stays demonstrable on its own.
+      resp = resolveSample(trimmed);
+    }
+
+    setMessages((m) => [...m, { role: "assistant", resp, showReasoning: false }]);
+    setLoading(false);
+  }
+
+  function ask() {
+    void send(q);
+  }
+
+  function pick(key: string) {
+    const s = SAMPLES.find((x) => x.key === key);
+    if (s && !loading) {
+      setModule("ask");
+      void send(s.q, s.filter);
     }
   }
 
+  function toggleMsg(idx: number) {
+    setMessages((m) =>
+      m.map((msg, i) =>
+        i === idx && msg.role === "assistant"
+          ? { ...msg, showReasoning: !msg.showReasoning }
+          : msg,
+      ),
+    );
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      ask();
+    }
+  }
+
+  function go(key: ModuleKey) {
+    setModule(key);
+    setDrawer(null);
+  }
+
+  const empty = messages.length === 0 && !loading;
+
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
-      <header className="mb-8">
-        <h1 className="text-2xl font-medium">Project Lex — UAE Tax Assistant</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Cited answers on UAE Corporate Tax &amp; VAT. Decision-support only —
-          a human reviews before use.
-        </p>
-      </header>
+    <div
+      style={{
+        height: "100vh",
+        display: "flex",
+        background: "#fff",
+        color: "#1a1a1a",
+        overflow: "hidden",
+      }}
+    >
+      <Sidebar module={module} role={role} onNavigate={go} onSetRole={setRole} />
 
-      <form onSubmit={ask} className="space-y-3">
-        <textarea
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="e.g. Is the first sale of a new residential building zero-rated for VAT?"
-          rows={3}
-          className="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-gray-500 focus:outline-none"
-        />
-        <div className="flex items-center gap-3">
-          <select
-            value={taxType}
-            onChange={(e) => setTaxType(e.target.value as "" | "CT" | "VAT")}
-            className="rounded-lg border border-gray-300 p-2 text-sm"
-          >
-            <option value="">All</option>
-            <option value="CT">Corporate Tax</option>
-            <option value="VAT">VAT</option>
-          </select>
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            {loading ? "Thinking…" : "Ask"}
-          </button>
-        </div>
-      </form>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <Topbar module={module} role={role} />
 
-      {result && (
-        <section className="mt-8 rounded-lg border border-gray-200 p-5">
-          {result.error && (
-            <p className="text-sm text-red-700">{result.error}</p>
-          )}
-
-          {!result.error && (
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          {module === "ask" ? (
             <>
-              <div className="mb-3 flex items-center gap-2">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    CONFIDENCE_STYLES[result.confidence] ?? ""
-                  }`}
-                >
-                  {result.confidence} confidence
-                </span>
-                {result.status === "escalate" && (
-                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                    escalated to F&amp;A
-                  </span>
-                )}
+              <div className="lex-scroll" ref={threadRef} style={{ flex: 1, overflowY: "auto" }}>
+                <div style={{ maxWidth: 740, margin: "0 auto", padding: "30px 28px 16px" }}>
+                  {empty && (
+                    <div style={{ marginTop: 20 }}>
+                      <div
+                        style={{
+                          fontFamily: SERIF,
+                          fontSize: 28,
+                          fontWeight: 600,
+                          lineHeight: 1.2,
+                          letterSpacing: "-.01em",
+                        }}
+                      >
+                        How can I help with UAE tax?
+                      </div>
+                      <p
+                        style={{
+                          fontSize: 16,
+                          lineHeight: 1.65,
+                          color: "#6b6b66",
+                          margin: "12px 0 0",
+                          maxWidth: 560,
+                        }}
+                      >
+                        Ask a Corporate Tax or VAT question. I answer from official UAE FTA
+                        law with citations — and escalate to your finance team rather than
+                        guess when the law can&apos;t settle it.
+                      </p>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          alignItems: "center",
+                          marginTop: 22,
+                        }}
+                      >
+                        <span style={{ fontSize: 12, color: "#b4b4ae", fontWeight: 500 }}>
+                          Try
+                        </span>
+                        {SAMPLES.map((s) => (
+                          <button
+                            key={s.key}
+                            onClick={() => pick(s.key)}
+                            style={{
+                              border: "1px solid #e6e6e2",
+                              background: "#fff",
+                              borderRadius: 99,
+                              padding: "6px 13px",
+                              fontSize: 12,
+                              color: "#6b6b66",
+                              cursor: "pointer",
+                              fontWeight: 500,
+                            }}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {messages.map((m, i) =>
+                    m.role === "user" ? (
+                      <UserMessage key={i} text={m.text} first={i === 0} />
+                    ) : (
+                      <AssistantMessage
+                        key={i}
+                        resp={m.resp}
+                        showReasoning={m.showReasoning}
+                        onToggle={() => toggleMsg(i)}
+                      />
+                    ),
+                  )}
+
+                  {loading && <TypingIndicator />}
+                </div>
               </div>
 
-              {result.flaggedPremise && (
-                <div className="mb-3 rounded border-l-4 border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
-                  <strong>Check this assumption:</strong> {result.flaggedPremise}
-                </div>
-              )}
-
-              {result.status === "escalate" ? (
-                <p className="text-sm text-gray-700">
-                  {result.escalationReason ??
-                    "This needs F&A review — not enough grounded source to answer."}
-                </p>
-              ) : (
-                <>
-                  <p className="whitespace-pre-wrap text-sm text-gray-900">
-                    {result.answer}
-                  </p>
-                  {result.reasoning && (
-                    <details className="mt-3 text-sm text-gray-600">
-                      <summary className="cursor-pointer">Reasoning</summary>
-                      <p className="mt-2 whitespace-pre-wrap">
-                        {result.reasoning}
-                      </p>
-                    </details>
-                  )}
-                </>
-              )}
-
-              {result.citations.length > 0 && (
-                <div className="mt-4 border-t border-gray-100 pt-3">
-                  <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
-                    Sources
-                  </h2>
-                  <ul className="space-y-1 text-sm">
-                    {result.citations.map((c, i) => (
-                      <li key={i}>
-                        <span className="font-medium">{c.articleRef}</span>
-                        {c.effectiveDate && (
-                          <span className="text-gray-500"> · {c.effectiveDate}</span>
-                        )}
-                        {c.sourceUrl && (
-                          <a
-                            href={c.sourceUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="ml-2 text-blue-600 underline"
-                          >
-                            source
-                          </a>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              <Composer
+                q={q}
+                filter={filter}
+                loading={loading}
+                onQ={setQ}
+                onFilter={setFilter}
+                onKeyDown={onKeyDown}
+                onAsk={ask}
+              />
             </>
+          ) : (
+            <PlannedModules
+              module={module}
+              role={role}
+              onOpenDrawer={setDrawer}
+              onSwitchReviewer={() => setRole("reviewer")}
+            />
           )}
-        </section>
+        </div>
+      </div>
+
+      <Drawer item={drawer} onClose={() => setDrawer(null)} />
+    </div>
+  );
+}
+
+// ── Ask thread pieces ────────────────────────────────────────────────────────
+
+function UserMessage({ text, first }: { text: string; first: boolean }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        margin: first ? "0 0 4px" : "26px 0 4px",
+        animation: "lexrise .3s ease both",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: "80%",
+          background: "#f3f2ee",
+          borderRadius: "16px 16px 5px 16px",
+          padding: "12px 16px",
+          fontSize: 15.5,
+          lineHeight: 1.5,
+          fontFamily: SERIF,
+        }}
+      >
+        {text}
+      </div>
+    </div>
+  );
+}
+
+function AssistantMessage({
+  resp,
+  showReasoning,
+  onToggle,
+}: {
+  resp: AnswerResult;
+  showReasoning: boolean;
+  onToggle: () => void;
+}) {
+  const isEscalate = resp.status === "escalate";
+  const isAnswered = resp.status === "answered";
+  const conf = CONF_MAP[resp.confidence] ?? CONF_MAP.low;
+  const answerParas = resp.answer ? resp.answer.split("\n\n") : [];
+  const reasoningLines = resp.reasoning ? resp.reasoning.split("\n") : [];
+  const hasCitations = resp.citations && resp.citations.length > 0;
+
+  return (
+    <div style={{ margin: "18px 0 30px", animation: "lexrise .35s ease both" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 14,
+          marginBottom: 12,
+        }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".13em", color: "#b4b4ae" }}>
+          LEX
+        </span>
+        {isAnswered && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: conf.color,
+            }}
+          >
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: conf.color }} />
+            {conf.label}
+          </span>
+        )}
+        {isEscalate && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: "#9a6b18",
+            }}
+          >
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#c9952a" }} />
+            Escalated to review
+          </span>
+        )}
+      </div>
+
+      {isEscalate && (
+        <div style={{ borderLeft: "2px solid #c9952a", padding: "2px 0 2px 16px" }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: ".06em",
+              textTransform: "uppercase",
+              color: "#9a6b18",
+              marginBottom: 6,
+            }}
+          >
+            Why this needs a human
+          </div>
+          <div style={{ fontFamily: SERIF, fontSize: 16, lineHeight: 1.7, color: "#33312c" }}>
+            {resp.escalationReason}
+          </div>
+        </div>
       )}
-    </main>
+
+      {isAnswered && (
+        <>
+          {resp.flaggedPremise && (
+            <div
+              style={{
+                borderLeft: "2px solid #c9952a",
+                padding: "2px 0 2px 16px",
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: ".06em",
+                  textTransform: "uppercase",
+                  color: "#9a6b18",
+                  marginBottom: 5,
+                }}
+              >
+                Check this assumption
+              </div>
+              <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#5a564d" }}>
+                {resp.flaggedPremise}
+              </div>
+            </div>
+          )}
+          {answerParas.map((para, i) => (
+            <p
+              key={i}
+              style={{
+                fontFamily: SERIF,
+                fontSize: 16.5,
+                lineHeight: 1.72,
+                color: "#1f1f1c",
+                margin: "0 0 14px",
+              }}
+            >
+              {para}
+            </p>
+          ))}
+        </>
+      )}
+
+      <div style={{ marginTop: 8 }}>
+        <button
+          onClick={onToggle}
+          style={{
+            border: "none",
+            background: "none",
+            padding: "4px 0",
+            cursor: "pointer",
+            fontSize: 13,
+            fontWeight: 500,
+            color: "#8a8a85",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <span style={{ fontSize: 9, width: 9, display: "inline-block" }}>
+            {showReasoning ? "▾" : "▸"}
+          </span>
+          {showReasoning ? "Hide reasoning" : "Show reasoning"}
+        </button>
+        {showReasoning && (
+          <div style={{ marginTop: 8, borderLeft: "2px solid #ececea", paddingLeft: 16 }}>
+            {reasoningLines.map((line, i) => (
+              <div
+                key={i}
+                style={{ fontSize: 14, lineHeight: 1.6, color: "#6b6b66", marginBottom: 6 }}
+              >
+                {line}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {hasCitations && (
+        <div style={{ marginTop: 20 }}>
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              letterSpacing: ".1em",
+              textTransform: "uppercase",
+              color: "#b4b4ae",
+              marginBottom: 10,
+            }}
+          >
+            Sources
+          </div>
+          {resp.citations.map((c, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: 12,
+                padding: "7px 0",
+                borderTop: "1px solid #f1f1ee",
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: 14.5, flex: "none" }}>
+                {c.articleRef}
+              </span>
+              <span style={{ fontSize: 12.5, color: "#a8a8a2", flex: 1 }}>
+                {c.effectiveDate ? `Effective ${c.effectiveDate}` : ""}
+              </span>
+              {c.sourceUrl && (
+                <a
+                  href={c.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontSize: 13,
+                    color: "#1a1a1a",
+                    fontWeight: 500,
+                    textDecoration: "underline",
+                    textUnderlineOffset: 2,
+                    textDecorationColor: "#cdcdc8",
+                    flex: "none",
+                  }}
+                >
+                  source ↗
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, margin: "18px 0 30px" }}>
+      <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".13em", color: "#b4b4ae" }}>
+        LEX
+      </span>
+      <span style={{ fontSize: 13, color: "#a8a8a2" }}>Reviewing FTA law</span>
+      <span style={{ display: "inline-flex", gap: 3 }}>
+        {[0, 0.15, 0.3].map((delay) => (
+          <span
+            key={delay}
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: "#b4b4ae",
+              animation: `lexdot 1s infinite ${delay}s`,
+            }}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+function Composer({
+  q,
+  filter,
+  loading,
+  onQ,
+  onFilter,
+  onKeyDown,
+  onAsk,
+}: {
+  q: string;
+  filter: TaxFilter;
+  loading: boolean;
+  onQ: (v: string) => void;
+  onFilter: (v: TaxFilter) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onAsk: () => void;
+}) {
+  return (
+    <div style={{ flex: "none", borderTop: "1px solid #ececea" }}>
+      <div style={{ maxWidth: 740, margin: "0 auto", padding: "14px 28px 16px" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+          <div style={{ position: "relative", flex: "none" }}>
+            <select
+              value={filter}
+              onChange={(e) => onFilter(e.target.value as TaxFilter)}
+              style={{
+                appearance: "none",
+                WebkitAppearance: "none",
+                border: "1px solid #e0e0db",
+                borderRadius: 18,
+                background: "#fff",
+                padding: "0 34px 0 16px",
+                height: 48,
+                fontSize: 13.5,
+                color: "#3a3a36",
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              <option>All</option>
+              <option>Corporate Tax</option>
+              <option>VAT</option>
+            </select>
+            <span
+              style={{
+                position: "absolute",
+                right: 15,
+                top: "50%",
+                transform: "translateY(-50%)",
+                pointerEvents: "none",
+                color: "#a8a8a2",
+                fontSize: 10,
+              }}
+            >
+              ▾
+            </span>
+          </div>
+
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "flex-end",
+              gap: 8,
+              border: "1px solid #e0e0db",
+              borderRadius: 24,
+              background: "#fff",
+              padding: "6px 6px 6px 18px",
+            }}
+          >
+            <textarea
+              value={q}
+              onChange={(e) => onQ(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Ask a UAE tax question…"
+              rows={1}
+              style={{
+                flex: 1,
+                border: "none",
+                background: "none",
+                padding: "11px 0",
+                fontSize: 15.5,
+                lineHeight: 1.4,
+                color: "#1a1a1a",
+                resize: "none",
+                fontFamily: SERIF,
+                maxHeight: 120,
+              }}
+            />
+            <button
+              onClick={onAsk}
+              disabled={loading}
+              style={{
+                flex: "none",
+                width: 38,
+                height: 38,
+                border: "none",
+                borderRadius: "50%",
+                background: "#1a1a1a",
+                color: "#fff",
+                cursor: loading ? "default" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {loading ? (
+                <span
+                  style={{
+                    width: 15,
+                    height: 15,
+                    border: "2px solid rgba(255,255,255,.35)",
+                    borderTopColor: "#fff",
+                    borderRadius: "50%",
+                    display: "inline-block",
+                    animation: "lexspin .7s linear infinite",
+                  }}
+                />
+              ) : (
+                <span style={{ fontSize: 18, lineHeight: 1 }}>↑</span>
+              )}
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: "#b4b4ae", marginTop: 10, textAlign: "center" }}>
+          Decision-support only — a human reviews before use.
+        </div>
+      </div>
+    </div>
   );
 }

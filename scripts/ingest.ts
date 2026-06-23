@@ -1,4 +1,8 @@
-import "dotenv/config";
+import { config } from "dotenv";
+// Load .env.local first (Next.js convention + what the README/.env.example use),
+// then .env as a fallback. dotenv won't override vars already set.
+config({ path: ".env.local" });
+config();
 import { readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join, extname, basename, relative } from "path";
 import { embedMany } from "ai";

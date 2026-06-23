@@ -1,4 +1,8 @@
-import "dotenv/config";
+import { config } from "dotenv";
+// Load .env.local first (Next.js convention + what the README/.env.example use),
+// then .env as a fallback. dotenv won't override vars already set.
+config({ path: ".env.local" });
+config();
 import { neon } from "@neondatabase/serverless";
 
 // Enables pgvector. Run once before the first migration: `npm run db:setup`.

@@ -1,7 +1,8 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { embed } from "ai";
-import { EMBEDDING_MODEL } from "../ai/models";
+import { EMBEDDING_MODEL, RERANK_ENABLED, RERANK_CANDIDATES } from "../ai/models";
+import { rerank } from "./rerank";
 import { SEED_CORPUS, type SeedChunk } from "./seed";
 
 // Unified context chunk shape used by the answer engine, regardless of source.
@@ -143,11 +144,15 @@ export async function getRelevantChunks(
   opts: { taxType?: "CT" | "VAT"; topK?: number } = {},
 ): Promise<ContextChunk[]> {
   const topK = opts.topK ?? 8;
+  // Over-retrieve a wider candidate set, then let the reranker pick the best
+  // topK. Without reranking we just fetch topK directly (original behaviour).
+  const fetchK = RERANK_ENABLED ? Math.max(topK, RERANK_CANDIDATES) : topK;
 
+  let candidates: ContextChunk[];
   if (process.env.DATABASE_URL) {
     const { retrieve } = await import("./retrieve");
-    const rows = await retrieve(question, { taxType: opts.taxType, topK });
-    return rows.map((r) => ({
+    const rows = await retrieve(question, { taxType: opts.taxType, topK: fetchK });
+    candidates = rows.map((r) => ({
       id: r.id,
       content: r.content,
       articleRef: r.articleRef,
@@ -156,12 +161,15 @@ export async function getRelevantChunks(
       instrument: null,
       docTitle: null,
     }));
+  } else {
+    const index = loadLocalIndex();
+    candidates = index?.length
+      ? await rankLocalIndex(index, question, opts.taxType, fetchK)
+      : rankSeed(question, opts.taxType, fetchK);
   }
 
-  const index = loadLocalIndex();
-  if (index?.length) {
-    return rankLocalIndex(index, question, opts.taxType, topK);
+  if (RERANK_ENABLED && candidates.length > topK) {
+    return rerank(question, candidates, topK);
   }
-
-  return rankSeed(question, opts.taxType, topK);
+  return candidates.slice(0, topK);
 }

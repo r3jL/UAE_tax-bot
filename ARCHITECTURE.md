@@ -60,7 +60,7 @@ How the system is built and how every part functions. Stack is **Vercel-native**
      │   embed)         │        │                  │        │                  │
      └────────┬─────────┘        └──────────────────┘        └──────────────────┘
               │
-     Official tax sources (tax.gov.ae — Corporate Tax, VAT; later other authorities)
+     Official tax sources (tax.gov.ae — Corporate Tax + VAT; UAE only)
 ```
 
 ---
@@ -181,7 +181,7 @@ For "is there VAT on this, and what do I do?" — a hybrid of **deterministic ru
 | Chat UI + Cited Q&A + Determination engine | Phase 1 |
 | Invoice upload + vision extraction | Phase 1.5 |
 | Register + dashboard + cron reminders + exports | Phase 2 |
-| Change-Impact workflow + more jurisdictions | Phase 3 |
+| Change-Impact workflow | Phase 3 |
 | Draft return preparation + reporting | Phase 4 |
 
 ---

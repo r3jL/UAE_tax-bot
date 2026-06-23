@@ -12,7 +12,7 @@ Internal · MD's Office / F&A · Status: Proposed for review
 3. **No autonomous filing — ever.** Returns are *prepared as drafts*, never submitted by the bot.
 4. **Deterministic where it matters** — dates, rates, and figures are computed in code, not guessed by the model.
 5. **Walled-off data** — invoices and filings stay in a private, access-controlled pipeline.
-6. **Start narrow, expand on proof** — one jurisdiction, two tax types, then grow.
+6. **UAE only** — one jurisdiction (UAE), two tax types (CT + VAT). Multi-jurisdiction is not a current goal; optimise for UAE accuracy.
 
 ---
 
@@ -23,9 +23,9 @@ Internal · MD's Office / F&A · Status: Proposed for review
 | **0** | Foundation & knowledge pipeline | UAE | Low | Enables everything else |
 | **1** | Cited VAT/Tax Q&A + Vendor Determination | UAE | Medium | Deflects routine queries from F&A |
 | **1.5** | Invoice upload & extraction | UAE | Medium | The "wow" demo; AP/procurement self-serve |
-| **2** | Compliance Register + Deadline Tracker | UAE → +1 | **Low** | Highest-value, zero hallucination |
-| **3** | Change-Impact Engine + multi-jurisdiction | +India, Oman, Bahrain, Brunei | High | Keeps everything current automatically |
-| **4** | Return Preparation (draft only) + Reporting | Per jurisdiction | High | Biggest time-saver, tightest guardrails |
+| **2** | Compliance Register + Deadline Tracker | UAE | **Low** | Highest-value, zero hallucination |
+| **3** | Change-Impact Engine | UAE | High | Keeps everything current automatically |
+| **4** | Return Preparation (draft only) + Reporting | UAE | High | Biggest time-saver, tightest guardrails |
 
 ---
 
@@ -92,14 +92,12 @@ Internal · MD's Office / F&A · Status: Proposed for review
 
 ---
 
-## Phase 3 — Change-Impact Engine + Multi-Jurisdiction
-**Goal:** when a law changes, the system detects it and re-runs every answer/report that relied on the old rule. Then expand beyond UAE.
+## Phase 3 — Change-Impact Engine
+**Goal:** when a UAE law changes, the system detects it and re-runs every answer/report that relied on the old rule.
 
 **Features**
-- **Law Monitor** watching each authority for amendments/new circulars
+- **Law Monitor** watching the FTA for amendments/new circulars
 - On change: flag affected register entries, cached answers, and reports for re-review
-- Add jurisdictions one at a time: **India → Oman → Bahrain → Brunei** (group's actual footprint)
-- (Upcoming per brief: US, Australia)
 
 **Success:** a real amendment is detected and the affected items are flagged automatically.
 **Maps to:** Project Lex "Change-Impact Engine".
@@ -110,7 +108,7 @@ Internal · MD's Office / F&A · Status: Proposed for review
 **Goal:** prepare return drafts and structured compliance reports — strictly draft + human sign-off.
 
 **Features**
-- Draft return preparation per jurisdiction from source data (**never filed by the bot**)
+- Draft return preparation from source data (**never filed by the bot**)
 - Figures computed in code, fully traceable; reconciled for review
 - Monthly compliance reports (PDF/Excel) per the register format
 - Full audit log of every draft and the human who signed off
@@ -123,7 +121,7 @@ Internal · MD's Office / F&A · Status: Proposed for review
 ## Explicitly OUT of scope
 - ❌ **Autonomous / automatic tax-return filing** — drafts only, human files.
 - ❌ Tax *optimisation* / aggressive positions — lawful compliance only.
-- ❌ 13 jurisdictions at once — that list narrows to the 5 the group operates in, started one at a time.
+- ❌ Multi-jurisdiction support — **UAE only** for now; other jurisdictions are not in scope.
 - ❌ Any answer or determination without a citation.
 
 ---

@@ -8,5 +8,24 @@ export const REASONING_MODEL =
 export const EMBEDDING_MODEL =
   process.env.EMBEDDING_MODEL ?? "openai/text-embedding-3-small";
 
-// Must match the embedding model's output dimensions. text-embedding-3-small = 1536.
-export const EMBEDDING_DIMENSIONS = 1536;
+// Must match the embedding model's output dimensions (text-embedding-3-small = 1536).
+// Env-driven so switching embedders is a config change, not a code edit.
+// NOTE: changing the embedder/dimensions requires re-running `npm run ingest`
+// (and a DB migration if DATABASE_URL is set) so stored vectors match query
+// vectors. Recommended upgrades for this UAE/bilingual corpus:
+//   - cohere/embed-multilingual-v3.0  (1024 dims) — strong Arabic + English
+//   - a self-hosted BGE-m3            (1024 dims) — multilingual, ~$0 marginal
+export const EMBEDDING_DIMENSIONS = Number(
+  process.env.EMBEDDING_DIMENSIONS ?? 1536,
+);
+
+// Reranker — a cheap model re-scores a wide candidate set down to the final
+// top-K before answering. Biggest precision lever in retrieval. Disable with
+// RERANK_ENABLED=false, or point RERANK_MODEL at any Gateway slug.
+export const RERANK_MODEL =
+  process.env.RERANK_MODEL ?? "anthropic/claude-haiku-4.5";
+
+export const RERANK_ENABLED = (process.env.RERANK_ENABLED ?? "true") !== "false";
+
+// How many candidates to over-retrieve before reranking down to topK.
+export const RERANK_CANDIDATES = Number(process.env.RERANK_CANDIDATES ?? 24);

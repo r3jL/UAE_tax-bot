@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  textarea, input, select, button { font-family: inherit; }
+  textarea:focus, select:focus { outline: none; }
+  .lex-thread::-webkit-scrollbar { width: 9px; }
+  .lex-thread::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 5px; }
+  @keyframes lexspin { to { transform: rotate(360deg); } }
+  @keyframes lexrise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+  @keyframes lexdot { 0%,60%,100% { opacity:.2; transform:translateY(0);} 30% { opacity:.9; transform:translateY(-3px);} }
+</style>
+</helmet>
+
+<div style="height:100vh;display:flex;flex-direction:column;background:#fff;font-family:'IBM Plex Sans',-apple-system,sans-serif;color:#1a1a1a;">
+
+  <!-- header -->
+  <div style="flex:none;border-bottom:1px solid #ececea;">
+    <div style="max-width:720px;margin:0 auto;padding:20px 28px;display:flex;justify-content:space-between;align-items:baseline;gap:20px;">
+      <div>
+        <span style="font-family:'Source Serif 4',serif;font-size:22px;font-weight:600;letter-spacing:-.01em;">Project Lex</span>
+        <span style="font-size:13px;color:#8a8a85;margin-left:12px;">UAE Corporate Tax &amp; VAT</span>
+      </div>
+      <button onClick="{{ reset }}" style="flex:none;border:none;background:none;padding:4px 0;font-size:13px;color:#8a8a85;font-weight:500;cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#d8d8d4;">New thread</button>
+    </div>
+  </div>
+
+  <!-- thread -->
+  <div class="lex-thread" ref="{{ threadRef }}" style="flex:1;overflow-y:auto;">
+    <div style="max-width:720px;margin:0 auto;padding:30px 28px 16px;">
+
+      <sc-if value="{{ empty }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-top:24px;">
+          <div style="font-family:'Source Serif 4',serif;font-size:28px;font-weight:600;line-height:1.2;letter-spacing:-.01em;">How can I help with UAE tax?</div>
+          <p style="font-size:16px;line-height:1.65;color:#6b6b66;margin:12px 0 0;max-width:560px;">Ask a Corporate Tax or VAT question. I answer from official UAE FTA law with citations — and escalate to your finance team rather than guess when the law can't settle it.</p>
+        </div>
+      </sc-if>
+
+      <sc-for list="{{ messages }}" as="m" hint-placeholder-count="0">
+        <!-- user -->
+        <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;justify-content:flex-end;margin:{{ m.userMargin }};animation:lexrise .3s ease both;">
+            <div style="max-width:80%;background:#f3f2ee;border-radius:14px 14px 4px 14px;padding:12px 16px;font-size:15.5px;line-height:1.5;font-family:'Source Serif 4',serif;color:#1a1a1a;">{{ m.text }}</div>
+          </div>
+        </sc-if>
+
+        <!-- assistant -->
+        <sc-if value="{{ m.isAssistant }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:18px 0 30px;animation:lexrise .35s ease both;">
+
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:12px;">
+              <span style="font-size:11px;font-weight:600;letter-spacing:.13em;color:#b4b4ae;">LEX</span>
+              <sc-if value="{{ m.showConfidence }}" hint-placeholder-val="{{ true }}">
+                <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:{{ m.confColor }};">
+                  <span style="width:7px;height:7px;border-radius:50%;background:{{ m.confColor }};"></span>{{ m.confLabel }}
+                </span>
+              </sc-if>
+              <sc-if value="{{ m.isEscalate }}" hint-placeholder-val="{{ false }}">
+                <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#9a6b18;">
+                  <span style="width:7px;height:7px;border-radius:50%;background:#c9952a;"></span>Escalated to review
+                </span>
+              </sc-if>
+            </div>
+
+            <!-- escalate -->
+            <sc-if value="{{ m.isEscalate }}" hint-placeholder-val="{{ false }}">
+              <div style="border-left:2px solid #c9952a;padding:2px 0 2px 16px;">
+                <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9a6b18;margin-bottom:6px;">Why this needs a human</div>
+                <div style="font-family:'Source Serif 4',serif;font-size:16px;line-height:1.7;color:#33312c;">{{ m.escalationReason }}</div>
+              </div>
+            </sc-if>
+
+            <!-- answered -->
+            <sc-if value="{{ m.isAnswered }}" hint-placeholder-val="{{ true }}">
+              <sc-if value="{{ m.hasFlag }}" hint-placeholder-val="{{ false }}">
+                <div style="border-left:2px solid #c9952a;padding:2px 0 2px 16px;margin-bottom:16px;">
+                  <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9a6b18;margin-bottom:5px;">Check this assumption</div>
+                  <div style="font-size:14.5px;line-height:1.6;color:#5a564d;">{{ m.flaggedPremise }}</div>
+                </div>
+              </sc-if>
+              <sc-for list="{{ m.answerParas }}" as="para" hint-placeholder-count="2">
+                <p style="font-family:'Source Serif 4',serif;font-size:16.5px;line-height:1.72;color:#1f1f1c;margin:0 0 14px;">{{ para }}</p>
+              </sc-for>
+            </sc-if>
+
+            <!-- reasoning -->
+            <div style="margin-top:8px;">
+              <button onClick="{{ m.toggleR }}" style="border:none;background:none;padding:4px 0;cursor:pointer;font-size:13px;font-weight:500;color:#8a8a85;display:inline-flex;align-items:center;gap:6px;">
+                <span style="font-size:9px;width:9px;display:inline-block;">{{ m.reasoningArrow }}</span>{{ m.reasoningLabel }}
+              </button>
+              <sc-if value="{{ m.showReasoning }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:8px;border-left:2px solid #ececea;padding-left:16px;">
+                  <sc-for list="{{ m.reasoningLines }}" as="line" hint-placeholder-count="4">
+                    <div style="font-size:14px;line-height:1.6;color:#6b6b66;margin-bottom:6px;">{{ line }}</div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+
+            <!-- sources -->
+            <sc-if value="{{ m.hasCitations }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-top:20px;">
+                <div style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#b4b4ae;margin-bottom:10px;">Sources</div>
+                <sc-for list="{{ m.citations }}" as="c" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:baseline;gap:12px;padding:7px 0;border-top:1px solid #f1f1ee;">
+                    <span style="font-weight:600;color:#1a1a1a;font-size:14.5px;flex:none;">{{ c.articleRef }}</span>
+                    <span style="font-size:12.5px;color:#a8a8a2;flex:1;">Effective {{ c.effectiveDate }}</span>
+                    <a href="{{ c.sourceUrl }}" target="_blank" rel="noopener" style="font-size:13px;color:#1a1a1a;font-weight:500;text-decoration:underline;text-underline-offset:2px;text-decoration-color:#cdcdc8;flex:none;">source ↗</a>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+          </div>
+        </sc-if>
+      </sc-for>
+
+      <!-- typing -->
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:9px;margin:18px 0 30px;">
+          <span style="font-size:11px;font-weight:600;letter-spacing:.13em;color:#b4b4ae;">LEX</span>
+          <span style="font-size:13px;color:#a8a8a2;">Reviewing FTA law</span>
+          <span style="display:inline-flex;gap:3px;">
+            <span style="width:5px;height:5px;border-radius:50%;background:#b4b4ae;animation:lexdot 1s infinite;"></span>
+            <span style="width:5px;height:5px;border-radius:50%;background:#b4b4ae;animation:lexdot 1s infinite .15s;"></span>
+            <span style="width:5px;height:5px;border-radius:50%;background:#b4b4ae;animation:lexdot 1s infinite .3s;"></span>
+          </span>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+
+  <!-- composer -->
+  <div style="flex:none;border-top:1px solid #ececea;">
+    <div style="max-width:720px;margin:0 auto;padding:14px 28px 16px;">
+      <div style="display:flex;gap:7px;align-items:center;margin-bottom:11px;overflow-x:auto;">
+        <span style="font-size:11px;color:#b4b4ae;font-weight:500;flex:none;">Try</span>
+        <sc-for list="{{ examples }}" as="ex" hint-placeholder-count="4">
+          <button onClick="{{ ex.pick }}" style="flex:none;border:1px solid #e6e6e2;background:#fff;border-radius:99px;padding:6px 13px;font-size:12px;color:#6b6b66;cursor:pointer;font-weight:500;white-space:nowrap;">{{ ex.label }}</button>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-end;">
+        <div style="position:relative;flex:none;">
+          <select value="{{ filter }}" onChange="{{ onFilter }}" style="appearance:none;-webkit-appearance:none;border:1px solid #e0e0db;border-radius:10px;background:#fff;padding:0 32px 0 14px;height:48px;font-size:13.5px;color:#3a3a36;font-weight:500;cursor:pointer;">
+            <option>All</option>
+            <option>Corporate Tax</option>
+            <option>VAT</option>
+          </select>
+          <span style="position:absolute;right:13px;top:50%;transform:translateY(-50%);pointer-events:none;color:#a8a8a2;font-size:10px;">▾</span>
+        </div>
+        <div style="flex:1;display:flex;align-items:flex-end;gap:8px;border:1px solid #e0e0db;border-radius:13px;background:#fff;padding:6px 6px 6px 16px;">
+          <textarea value="{{ q }}" onInput="{{ onQ }}" onKeyDown="{{ onKey }}" placeholder="Ask a UAE tax question…" rows="1" style="flex:1;border:none;background:none;padding:11px 0;font-size:15.5px;line-height:1.4;color:#1a1a1a;resize:none;font-family:'Source Serif 4',serif;max-height:120px;"></textarea>
+          <button onClick="{{ ask }}" disabled="{{ loading }}" style="flex:none;width:38px;height:38px;border:none;border-radius:10px;background:#1a1a1a;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+            <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}"><span style="width:15px;height:15px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:lexspin .7s linear infinite;"></span></sc-if>
+            <sc-if value="{{ idle }}" hint-placeholder-val="{{ true }}"><span style="font-size:18px;line-height:1;">↑</span></sc-if>
+          </button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#b4b4ae;margin-top:10px;text-align:center;">Decision-support only — a human reviews before use.</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.threadRef = React.createRef();
+  }
+
+  state = { q: '', filter: 'All', loading: false, messages: [] };
+
+  samples = [
+    {
+      key: 'residential', label: 'Residential first supply', filter: 'VAT',
+      q: 'Is the first sale of a new residential building zero-rated for VAT?',
+      resp: {
+        status: 'answered', confidence: 'high', flaggedPremise: null, escalationReason: null,
+        answer: 'Yes. The first supply of a newly constructed residential building is zero-rated for VAT, provided the supply is made within three years of the building\u2019s completion. This applies whether the first supply is by sale or by lease.\n\nBecause the first supply is zero-rated rather than exempt, the developer can recover input VAT incurred on the construction, subject to the normal input-tax recovery rules. Any subsequent supply of the same residential building is exempt, not zero-rated.',
+        reasoning: '1. Identify the supply: the first sale of a newly built residential building.\n2. VAT treatment of residential property turns on whether it is the \u201cfirst supply.\u201d\n3. Art. 45(9) of the VAT Decree-Law zero-rates the first supply of residential buildings made within 3 years of completion.\n4. Executive Regulation Art. 41 confirms the 3-year window and that the first supply may be by sale or lease.\n5. Conclusion: zero-rated, with input-tax recovery on construction costs.',
+        citations: [
+          { articleRef: 'Article 45(9)', effectiveDate: '2018-01-01', sourceUrl: 'https://tax.gov.ae/' },
+          { articleRef: 'Exec. Regulation Art. 41', effectiveDate: '2018-01-01', sourceUrl: 'https://tax.gov.ae/' },
+        ],
+      },
+    },
+    {
+      key: 'car', label: 'Input VAT on a company car', filter: 'VAT',
+      q: 'Can we recover the input VAT on the company car bought for the sales director\u2019s personal use?',
+      resp: {
+        status: 'answered', confidence: 'medium', escalationReason: null,
+        flaggedPremise: 'Your question assumes the car is available for the director\u2019s personal use. Input VAT on a motor vehicle that is available for personal use is specifically blocked \u2014 so that detail changes the answer.',
+        answer: 'No \u2014 not where the vehicle is available for personal use. Input VAT incurred on the purchase of a motor vehicle is non-recoverable if the vehicle is available for the personal use of any person.\n\nInput tax is only recoverable where the motor vehicle is used exclusively for business \u2014 for example a pool car not allocated to an individual, a taxi, or a vehicle used in a vehicle-rental business. A car allocated to the sales director and available for personal use falls outside that exception.',
+        reasoning: '1. The expense is the purchase of a motor vehicle.\n2. Executive Regulation Art. 53 blocks input tax on motor vehicles available for personal use.\n3. Exception: vehicles used exclusively for business (pool cars, taxis, rental fleet, emergency vehicles).\n4. The stated personal use by the director removes the exclusive-business exception.\n5. Conclusion: input VAT is blocked.',
+        citations: [
+          { articleRef: 'Exec. Regulation Art. 53', effectiveDate: '2018-01-01', sourceUrl: 'https://tax.gov.ae/' },
+        ],
+      },
+    },
+    {
+      key: 'freezone', label: 'Free Zone rental income', filter: 'Corporate Tax',
+      q: 'Does rental income from our Free Zone property count as Qualifying Income taxed at 0%?',
+      resp: {
+        status: 'answered', confidence: 'low', flaggedPremise: null, escalationReason: null,
+        answer: 'Likely not at 0% \u2014 but this depends on specifics that should be confirmed. Income from immovable property located in a Free Zone is treated differently by property type and counterparty. Income from commercial property transacted with other Free Zone Persons can be Qualifying Income; income from non-commercial property, or from non-Free Zone persons, is generally excluded and taxed at 9%.\n\nBecause the 0% treatment hinges on the property\u2019s classification and the tenant, this answer is low-confidence without those details.',
+        reasoning: '1. The Qualifying Free Zone Person regime taxes Qualifying Income at 0%.\n2. Cabinet Decision 100 of 2023 sets out qualifying and excluded activities.\n3. Immovable-property income is generally an Excluded Activity \u2014 with a carve-out for commercial property transacted with Free Zone Persons.\n4. The classification here is ambiguous: property type? tenant?\n5. Conclusion: probably 9%, but low confidence pending the missing facts.',
+        citations: [
+          { articleRef: 'CT Law Art. 18', effectiveDate: '2023-06-01', sourceUrl: 'https://tax.gov.ae/' },
+          { articleRef: 'Cabinet Decision 100/2023', effectiveDate: '2023-06-01', sourceUrl: 'https://tax.gov.ae/' },
+        ],
+      },
+    },
+    {
+      key: 'loan', label: 'Intercompany loan pricing', filter: 'Corporate Tax',
+      q: 'How should we price the intercompany loan from our Cyprus parent to stay transfer-pricing compliant?',
+      resp: {
+        status: 'escalate', confidence: 'low', flaggedPremise: null, answer: '',
+        escalationReason: 'This needs an arm\u2019s-length benchmarking analysis of a specific related-party loan and touches a non-UAE jurisdiction (Cyprus). It can\u2019t be grounded in UAE FTA law text alone and involves facts and treaty matters outside this tool\u2019s scope. Routed to the finance team for review.',
+        reasoning: '1. The question concerns arm\u2019s-length pricing of a cross-border related-party loan.\n2. UAE TP rules (CT Law Arts. 34\u201336) require arm\u2019s-length terms, but the specific rate depends on facts not in published guidance.\n3. Determining a compliant rate requires a benchmarking study \u2014 not answerable from law text alone.\n4. Cross-jurisdiction (Cyprus) treaty considerations are outside UAE-only scope.\n5. Conclusion: escalate to the finance team.',
+        citations: [],
+      },
+    },
+  ];
+
+  fallback = {
+    status: 'escalate', confidence: 'low', flaggedPremise: null, answer: '',
+    escalationReason: 'I couldn\u2019t find UAE FTA law text that grounds this question with enough confidence to answer it. Rather than guess, I\u2019ve routed it to the finance team for review.',
+    reasoning: '1. Attempted to match the question to grounding provisions in the UAE VAT and Corporate Tax law.\n2. No provision settles the question with sufficient confidence.\n3. Per policy, an ungrounded answer is escalated rather than estimated.',
+    citations: [],
+  };
+
+  resolve(q) {
+    const t = q.trim().toLowerCase();
+    let s = this.samples.find(x => x.q.toLowerCase() === t);
+    if (!s) {
+      if (/residential|first supply|first sale|building/.test(t)) s = this.samples.find(x => x.key === 'residential');
+      else if (/\bcar\b|vehicle|motor/.test(t)) s = this.samples.find(x => x.key === 'car');
+      else if (/free.?zone|qualifying/.test(t)) s = this.samples.find(x => x.key === 'freezone');
+      else if (/loan|transfer.?pric|intercompany|related.?party|arm.?s.?length/.test(t)) s = this.samples.find(x => x.key === 'loan');
+    }
+    return s ? s.resp : this.fallback;
+  }
+
+  send(text, filter) {
+    if (!text.trim() || this.state.loading) return;
+    const resp = this.resolve(text);
+    const userMsg = { role: 'user', text: text.trim() };
+    this.setState(s => ({ q: '', filter: filter || s.filter, loading: true, messages: [...s.messages, userMsg] }));
+    setTimeout(() => {
+      const aMsg = { role: 'assistant', resp, showReasoning: false };
+      this.setState(s => ({ loading: false, messages: [...s.messages, aMsg] }));
+    }, 950);
+  }
+
+  ask() { this.send(this.state.q); }
+
+  pick(key) {
+    const s = this.samples.find(x => x.key === key);
+    if (s && !this.state.loading) this.send(s.q, s.filter);
+  }
+
+  toggleMsg(idx) {
+    this.setState(s => ({ messages: s.messages.map((m, i) => i === idx ? { ...m, showReasoning: !m.showReasoning } : m) }));
+  }
+
+  reset() { this.setState({ messages: [], q: '', loading: false }); }
+
+  onKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.ask(); }
+  }
+
+  componentDidUpdate() {
+    if (this.threadRef.current) this.threadRef.current.scrollTop = this.threadRef.current.scrollHeight;
+  }
+
+  renderVals() {
+    const confMap = {
+      high: { label: 'High confidence', color: '#2f7a52' },
+      medium: { label: 'Medium confidence', color: '#9a6b18' },
+      low: { label: 'Low confidence', color: '#b0453a' },
+    };
+    const messages = this.state.messages.map((m, i) => {
+      if (m.role === 'user') return { isUser: true, isAssistant: false, text: m.text, userMargin: i === 0 ? '0 0 4px' : '26px 0 4px' };
+      const r = m.resp;
+      const isEsc = r.status === 'escalate';
+      const isAns = r.status === 'answered';
+      const c = confMap[r.confidence] || confMap.low;
+      return {
+        isUser: false, isAssistant: true,
+        isEscalate: isEsc, isAnswered: isAns, showConfidence: isAns,
+        confLabel: c.label, confColor: c.color,
+        hasFlag: !!r.flaggedPremise, flaggedPremise: r.flaggedPremise,
+        answerParas: r.answer ? r.answer.split('\n\n') : [],
+        reasoningLines: r.reasoning ? r.reasoning.split('\n') : [],
+        citations: r.citations || [], hasCitations: !!(r.citations && r.citations.length),
+        escalationReason: r.escalationReason,
+        showReasoning: m.showReasoning,
+        reasoningLabel: m.showReasoning ? 'Hide reasoning' : 'Show reasoning',
+        reasoningArrow: m.showReasoning ? '\u25be' : '\u25b8',
+        toggleR: () => this.toggleMsg(i),
+      };
+    });
+    return {
+      q: this.state.q, filter: this.state.filter, loading: this.state.loading, idle: !this.state.loading,
+      empty: this.state.messages.length === 0 && !this.state.loading,
+      messages,
+      threadRef: this.threadRef,
+      examples: this.samples.map(s => ({ key: s.key, label: s.label, pick: () => this.pick(s.key) })),
+      onQ: (e) => this.setState({ q: e.target.value }),
+      onFilter: (e) => this.setState({ filter: e.target.value }),
+      onKey: (e) => this.onKeyDown(e),
+      ask: () => this.ask(),
+      reset: () => this.reset(),
+    };
+  }
+}
+</script>
+</body>
+</html>

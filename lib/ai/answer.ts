@@ -42,7 +42,14 @@ export async function answerQuestion(
   const { object } = await generateObject({
     model: REASONING_MODEL,
     schema: answerContract,
-    system: SYSTEM_PROMPT,
+    temperature: 0, // deterministic, auditable answers for the same question
+    system: {
+      role: "system",
+      content: SYSTEM_PROMPT,
+      // Cache the (fixed) system prompt so repeat calls within the cache TTL
+      // don't re-bill it. Harmlessly ignored by providers that don't support it.
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+    },
     prompt: `Context (retrieved UAE tax provisions):\n\n${
       context || "(no passages retrieved)"
     }\n\nQuestion: ${question}`,
