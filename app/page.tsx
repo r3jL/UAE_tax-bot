@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Sidebar } from "./_components/sidebar";
-import { Topbar } from "./_components/topbar";
 import { PlannedModules } from "./_components/planned-modules";
 import { Drawer } from "./_components/drawer";
 import { Markdown } from "./_components/markdown";
@@ -148,7 +147,29 @@ export default function Workspace() {
     setDrawer(null);
   }
 
+  function newChat() {
+    setModule("ask");
+    setMessages([]);
+    setQ("");
+    setFiles([]);
+    setDrawer(null);
+  }
+
   const empty = messages.length === 0 && !loading;
+
+  const composerEl = (
+    <Composer
+      q={q}
+      filter={filter}
+      loading={loading}
+      files={files}
+      onQ={setQ}
+      onFilter={setFilter}
+      onFiles={setFiles}
+      onKeyDown={onKeyDown}
+      onAsk={ask}
+    />
+  );
 
   return (
     <div
@@ -160,7 +181,13 @@ export default function Workspace() {
         overflow: "hidden",
       }}
     >
-      <Sidebar module={module} role={role} onNavigate={go} onSetRole={setRole} />
+      <Sidebar
+        module={module}
+        role={role}
+        onNavigate={go}
+        onSetRole={setRole}
+        onNewChat={newChat}
+      />
 
       <div
         style={{
@@ -171,8 +198,6 @@ export default function Workspace() {
           overflow: "hidden",
         }}
       >
-        <Topbar module={module} />
-
         <div
           style={{
             flex: 1,
@@ -183,100 +208,102 @@ export default function Workspace() {
           }}
         >
           {module === "ask" ? (
-            <>
-              <div className="lex-scroll" ref={threadRef} style={{ flex: 1, overflowY: "auto" }}>
-                <div style={{ maxWidth: 740, margin: "0 auto", padding: "30px 28px 16px" }}>
-                  {empty && (
-                    <div style={{ marginTop: 20 }}>
-                      <div
-                        style={{
-                          fontFamily: SERIF,
-                          fontSize: 28,
-                          fontWeight: 600,
-                          lineHeight: 1.2,
-                          letterSpacing: "-.01em",
-                        }}
-                      >
-                        How can I help with UAE tax?
-                      </div>
-                      <p
-                        style={{
-                          fontSize: 16,
-                          lineHeight: 1.65,
-                          color: "#6b6b66",
-                          margin: "12px 0 0",
-                          maxWidth: 560,
-                        }}
-                      >
-                        Ask a Corporate Tax or VAT question. I answer from official UAE FTA
-                        law with citations — and escalate to your finance team rather than
-                        guess when the law can&apos;t settle it. You can also attach a
-                        contract or invoice (PDF or image) and ask about it.
-                      </p>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 8,
-                          alignItems: "center",
-                          marginTop: 22,
-                        }}
-                      >
-                        <span style={{ fontSize: 12, color: "#b4b4ae", fontWeight: 500 }}>
-                          Try
-                        </span>
-                        {SAMPLES.map((s) => (
-                          <button
-                            key={s.key}
-                            onClick={() => pick(s.key)}
-                            style={{
-                              border: "1px solid #e6e6e2",
-                              background: "#fff",
-                              borderRadius: 99,
-                              padding: "6px 13px",
-                              fontSize: 12,
-                              color: "#6b6b66",
-                              cursor: "pointer",
-                              fontWeight: 500,
-                            }}
-                          >
-                            {s.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {messages.map((m, i) =>
-                    m.role === "user" ? (
-                      <UserMessage key={i} text={m.text} files={m.files} first={i === 0} />
-                    ) : (
-                      <AssistantMessage
-                        key={i}
-                        resp={m.resp}
-                        showReasoning={m.showReasoning}
-                        onToggle={() => toggleMsg(i)}
-                      />
-                    ),
-                  )}
-
-                  {loading && <TypingIndicator label={loadingLabel} />}
+            empty ? (
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "24px 0 52px",
+                }}
+              >
+                <h1
+                  style={{
+                    fontFamily: SERIF,
+                    fontSize: 30,
+                    fontWeight: 600,
+                    letterSpacing: "-.01em",
+                    textAlign: "center",
+                    margin: "0 0 22px",
+                    padding: "0 24px",
+                  }}
+                >
+                  How can I help with UAE tax?
+                </h1>
+                {composerEl}
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: 740,
+                    padding: "18px 24px 0",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    justifyContent: "center",
+                  }}
+                >
+                  {SAMPLES.map((s) => (
+                    <button
+                      key={s.key}
+                      onClick={() => pick(s.key)}
+                      style={{
+                        border: "1px solid #e6e6e2",
+                        background: "#fff",
+                        borderRadius: 99,
+                        padding: "7px 14px",
+                        fontSize: 12.5,
+                        color: "#6b6b66",
+                        cursor: "pointer",
+                        fontWeight: 500,
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: "#cbcbc4", marginTop: 22, textAlign: "center" }}>
+                  Decision-support only — a human reviews before use.
                 </div>
               </div>
+            ) : (
+              <>
+                <div className="lex-scroll" ref={threadRef} style={{ flex: 1, overflowY: "auto" }}>
+                  <div style={{ maxWidth: 760, margin: "0 auto", padding: "28px 24px 14px" }}>
+                    {messages.map((m, i) =>
+                      m.role === "user" ? (
+                        <UserMessage key={i} text={m.text} files={m.files} first={i === 0} />
+                      ) : (
+                        <AssistantMessage
+                          key={i}
+                          resp={m.resp}
+                          showReasoning={m.showReasoning}
+                          onToggle={() => toggleMsg(i)}
+                        />
+                      ),
+                    )}
 
-              <Composer
-                q={q}
-                filter={filter}
-                loading={loading}
-                files={files}
-                onQ={setQ}
-                onFilter={setFilter}
-                onFiles={setFiles}
-                onKeyDown={onKeyDown}
-                onAsk={ask}
-              />
-            </>
+                    {loading && <TypingIndicator label={loadingLabel} />}
+                  </div>
+                </div>
+
+                <div style={{ flex: "none", padding: "6px 0 14px" }}>
+                  {composerEl}
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#b4b4ae",
+                      marginTop: 9,
+                      textAlign: "center",
+                    }}
+                  >
+                    Decision-support only — a human reviews before use.
+                  </div>
+                </div>
+              </>
+            )
           ) : (
             <PlannedModules module={module} />
           )}
@@ -650,146 +677,126 @@ function Composer({
     });
   }
 
-  return (
-    <div style={{ flex: "none", borderTop: "1px solid #ececea" }}>
-      <div style={{ maxWidth: 740, margin: "0 auto", padding: "14px 28px 16px" }}>
-        {files.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
-            {files.map((f, i) => (
-              <span
-                key={i}
-                title={f.name}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 7,
-                  maxWidth: 240,
-                  background: "#fff",
-                  border: "1px solid #e6e6e2",
-                  borderRadius: 10,
-                  padding: "5px 8px 5px 10px",
-                  fontSize: 12,
-                  color: "#5a564d",
-                }}
-              >
-                <span style={{ flex: "none" }}>📄</span>
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {f.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onFiles((prev) => prev.filter((_, j) => j !== i))}
-                  aria-label={`Remove ${f.name}`}
-                  style={{
-                    flex: "none",
-                    border: "none",
-                    background: "none",
-                    cursor: "pointer",
-                    color: "#a8a8a2",
-                    fontSize: 15,
-                    lineHeight: 1,
-                    padding: 0,
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-          <div style={{ position: "relative", flex: "none" }}>
-            <select
-              value={filter}
-              onChange={(e) => onFilter(e.target.value as TaxFilter)}
-              style={{
-                appearance: "none",
-                WebkitAppearance: "none",
-                border: "1px solid #e0e0db",
-                borderRadius: 18,
-                background: "#fff",
-                padding: "0 34px 0 16px",
-                height: 48,
-                fontSize: 13.5,
-                color: "#3a3a36",
-                fontWeight: 500,
-                cursor: "pointer",
-              }}
-            >
-              <option>All</option>
-              <option>Corporate Tax</option>
-              <option>VAT</option>
-            </select>
-            <span
-              style={{
-                position: "absolute",
-                right: 15,
-                top: "50%",
-                transform: "translateY(-50%)",
-                pointerEvents: "none",
-                color: "#a8a8a2",
-                fontSize: 10,
-              }}
-            >
-              ▾
-            </span>
-          </div>
+  const canSend = !loading && q.trim().length > 0;
+  const atFileLimit = files.length >= MAX_FILES;
 
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "flex-end",
-              gap: 4,
-              border: "1px solid #e0e0db",
-              borderRadius: 24,
-              background: "#fff",
-              padding: "6px 6px 6px 8px",
+  return (
+    <div style={{ width: "100%", padding: "0 24px" }}>
+      <div style={{ maxWidth: 740, margin: "0 auto" }}>
+        <div
+          style={{
+            border: "1px solid #e6e6e2",
+            borderRadius: 26,
+            background: "#fff",
+            boxShadow: "0 2px 22px rgba(0,0,0,0.07)",
+            padding: "10px 12px 9px",
+          }}
+        >
+          {files.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, margin: "2px 2px 8px" }}>
+              {files.map((f, i) => (
+                <span
+                  key={i}
+                  title={f.name}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 7,
+                    maxWidth: 240,
+                    background: "#fafaf9",
+                    border: "1px solid #ececea",
+                    borderRadius: 10,
+                    padding: "5px 8px 5px 10px",
+                    fontSize: 12,
+                    color: "#5a564d",
+                  }}
+                >
+                  <span style={{ flex: "none" }}>📄</span>
+                  <span
+                    style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
+                    {f.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onFiles((prev) => prev.filter((_, j) => j !== i))}
+                    aria-label={`Remove ${f.name}`}
+                    style={{
+                      flex: "none",
+                      border: "none",
+                      background: "none",
+                      cursor: "pointer",
+                      color: "#a8a8a2",
+                      fontSize: 15,
+                      lineHeight: 1,
+                      padding: 0,
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <input
+            ref={fileRef}
+            type="file"
+            accept={FILE_ACCEPT}
+            multiple
+            hidden
+            onChange={(e) => {
+              addFiles(e.target.files);
+              e.target.value = "";
             }}
-          >
-            <input
-              ref={fileRef}
-              type="file"
-              accept={FILE_ACCEPT}
-              multiple
-              hidden
-              onChange={(e) => {
-                addFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
+          />
+
+          <textarea
+            value={q}
+            onChange={(e) => onQ(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Ask a UAE tax question…"
+            rows={1}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border: "none",
+              background: "none",
+              padding: "8px 8px 4px",
+              fontSize: 15.5,
+              lineHeight: 1.45,
+              color: "#1a1a1a",
+              resize: "none",
+              outline: "none",
+              fontFamily: SERIF,
+              maxHeight: 168,
+            }}
+          />
+
+          {/* controls: + (attach) left · filter · send right */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              disabled={loading || files.length >= MAX_FILES}
-              title={
-                files.length >= MAX_FILES
-                  ? `Up to ${MAX_FILES} files`
-                  : "Attach images or PDFs for context"
-              }
+              disabled={loading || atFileLimit}
+              title={atFileLimit ? `Up to ${MAX_FILES} files` : "Attach images or PDFs for context"}
               style={{
                 flex: "none",
-                width: 38,
-                height: 38,
-                border: "none",
+                width: 34,
+                height: 34,
                 borderRadius: "50%",
-                background: "none",
-                color: files.length >= MAX_FILES ? "#cdcdc8" : "#8a8a85",
-                cursor: loading || files.length >= MAX_FILES ? "default" : "pointer",
+                border: "1px solid #e0e0db",
+                background: "#fff",
+                color: atFileLimit ? "#cdcdc8" : "#5a564d",
+                cursor: loading || atFileLimit ? "default" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
               <svg
-                width="19"
-                height="19"
+                width="17"
+                height="17"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -797,51 +804,74 @@ function Composer({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                <path d="M12 5v14M5 12h14" />
               </svg>
             </button>
-            <textarea
-              value={q}
-              onChange={(e) => onQ(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="Ask a UAE tax question…"
-              rows={1}
-              style={{
-                flex: 1,
-                border: "none",
-                background: "none",
-                padding: "11px 0",
-                fontSize: 15.5,
-                lineHeight: 1.4,
-                color: "#1a1a1a",
-                resize: "none",
-                fontFamily: SERIF,
-                maxHeight: 120,
-              }}
-            />
+
+            <div style={{ position: "relative", flex: "none" }}>
+              <select
+                value={filter}
+                onChange={(e) => onFilter(e.target.value as TaxFilter)}
+                style={{
+                  appearance: "none",
+                  WebkitAppearance: "none",
+                  border: "1px solid #e0e0db",
+                  borderRadius: 17,
+                  background: "#fff",
+                  padding: "0 26px 0 12px",
+                  height: 34,
+                  fontSize: 12.5,
+                  color: "#5a564d",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                <option>All</option>
+                <option>Corporate Tax</option>
+                <option>VAT</option>
+              </select>
+              <span
+                style={{
+                  position: "absolute",
+                  right: 11,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  pointerEvents: "none",
+                  color: "#a8a8a2",
+                  fontSize: 9,
+                }}
+              >
+                ▾
+              </span>
+            </div>
+
+            <div style={{ flex: 1 }} />
+
             <button
               onClick={onAsk}
-              disabled={loading}
+              disabled={!canSend}
+              title="Send"
               style={{
                 flex: "none",
-                width: 38,
-                height: 38,
+                width: 34,
+                height: 34,
                 border: "none",
                 borderRadius: "50%",
-                background: "#1a1a1a",
+                background: canSend ? "#1a1a1a" : "#e2e1dc",
                 color: "#fff",
-                cursor: loading ? "default" : "pointer",
+                cursor: canSend ? "pointer" : "default",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                transition: "background .15s ease",
               }}
             >
               {loading ? (
                 <span
                   style={{
-                    width: 15,
-                    height: 15,
-                    border: "2px solid rgba(255,255,255,.35)",
+                    width: 14,
+                    height: 14,
+                    border: "2px solid rgba(255,255,255,.4)",
                     borderTopColor: "#fff",
                     borderRadius: "50%",
                     display: "inline-block",
@@ -849,13 +879,10 @@ function Composer({
                   }}
                 />
               ) : (
-                <span style={{ fontSize: 18, lineHeight: 1 }}>↑</span>
+                <span style={{ fontSize: 17, lineHeight: 1 }}>↑</span>
               )}
             </button>
           </div>
-        </div>
-        <div style={{ fontSize: 11, color: "#b4b4ae", marginTop: 10, textAlign: "center" }}>
-          Decision-support only — a human reviews before use.
         </div>
       </div>
     </div>
