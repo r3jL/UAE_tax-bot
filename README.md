@@ -15,31 +15,95 @@ Read [ROADMAP.md](ROADMAP.md) for phases/features and [ARCHITECTURE.md](ARCHITEC
 
 ---
 
-## Get running (≈10 min)
+## Get running
 
 ```bash
 git clone https://github.com/Jatin0129/tax-bot.git
 cd tax-bot
 npm install
-
-# 1. Add your key (no database needed for the MVP)
-cp .env.example .env.local
-#   then set AI_GATEWAY_API_KEY=...  (Vercel dashboard → AI Gateway → API Keys)
-
-# 2. Build the knowledge base from the 55 FTA docs in ./corpus
-npm run ingest        # reads PDFs → chunks → embeds → lib/rag/corpus-index.json
-
-# 3. Run it
-npm run dev           # http://localhost:3000
+cp .env.example .env.local        # then pick your AI providers — see below
 ```
 
-That's it — **one key, no database** for the MVP. (Neon Postgres + pgvector is
-wired for scale later; set `DATABASE_URL` to switch the index to the DB.)
+Configure **chat** and **embeddings** providers in `.env.local` (see
+[AI providers](#ai-providers-swappable)), then build the knowledge base and run.
 
-### What needs a real key
-The AI Gateway key powers **both** ingestion (embeddings) and answers (the LLM).
-Without it the app boots and the UI renders, but questions return a clear
-"unauthenticated" error.
+With a database (`DATABASE_URL` set → Neon + pgvector — the current setup):
+
+```bash
+npm run db:setup              # enable pgvector (first time only)
+npm run db:push -- --force    # create tables at the configured embedding size
+npm run ingest                # corpus PDFs → chunks → embeddings → DB
+npm run dev                   # http://localhost:3000
+```
+
+No database? Leave `DATABASE_URL` unset and just `npm run ingest && npm run dev`
+— it embeds to `lib/rag/corpus-index.json` instead (one less moving part).
+
+---
+
+## AI providers (swappable)
+
+**Chat** (answers + reranker) and **embeddings** (retrieval) are configured
+**independently**. Set `REASONING_PROVIDER` and `EMBEDDING_PROVIDER` (or
+`AI_PROVIDER` to default both). All non-gateway backends speak the OpenAI API,
+so one client handles them — only the base URL + key differ.
+
+| provider | role | key / URL |
+|---|---|---|
+| `gateway` *(default)* | Vercel AI Gateway → Claude / OpenAI / … | `AI_GATEWAY_API_KEY` |
+| `openrouter` | free + paid hosted LLMs *(chat only)* | `OPENROUTER_API_KEY` |
+| `groq` | fast free-tier LLMs *(chat only)* | `GROQ_API_KEY` |
+| `google` | Gemini + **free embeddings** | `GOOGLE_API_KEY` ([AI Studio](https://aistudio.google.com/apikey)) |
+| `ollama` | self-hosted LAN box / VM | `OLLAMA_BASE_URL` |
+
+Chat-only backends (OpenRouter, Groq) have no embeddings endpoint — embeddings
+then fall back to the Gateway automatically.
+
+**Current POC setup (fully free): chat on OpenRouter, embeddings on local Ollama.**
+
+```env
+# chat — OpenRouter free tier
+REASONING_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-...
+REASONING_MODEL=nvidia/nemotron-3-super-120b-a12b:free   # fast fallback: openai/gpt-oss-20b:free
+RERANK_ENABLED=false                                     # free tiers are rate-limited; halves LLM calls
+
+# embeddings — local Ollama (free + unlimited; Ollama must be running)
+EMBEDDING_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434/v1
+EMBEDDING_MODEL=nomic-embed-text                         # `ollama pull nomic-embed-text` (~270 MB)
+EMBEDDING_DIMENSIONS=768
+```
+
+> Embeddings run on the Mac via Ollama, so **Ollama must be running** (`ollama serve`)
+> both to `npm run ingest` and to answer questions. Google AI Studio
+> (`EMBEDDING_PROVIDER=google`, `gemini-embedding-001`) also works but its free tier
+> caps at 1,000 embeds/day — too small for the 3,029-chunk corpus in one run; set
+> `EMBED_RPM=90` if you use it.
+
+### Switching chat to a self-hosted Ollama box / VM
+Pull the model on the box (`ollama pull qwen2.5:14b`) and make Ollama listen on
+`0.0.0.0:11434`. Then point the **chat** provider at it — embeddings stay on
+Google, so there's nothing to re-ingest:
+
+```env
+REASONING_PROVIDER=ollama
+OLLAMA_BASE_URL=http://<vm-ip>:11434/v1
+REASONING_MODEL=qwen2.5:14b      # use the EXACT tag from `ollama list` (there is no qwen3.5)
+```
+
+Restart `npm run dev` and chat runs on your VM.
+
+### Changing the embedding model → re-index
+The pgvector column size is fixed at create time, so whenever you change
+`EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` (or want to clear duplicate rows),
+rebuild the index:
+
+```bash
+npm run db:reset              # drop documents + law_chunks
+npm run db:push -- --force    # recreate at the new dimension
+npm run ingest                # re-embed the corpus
+```
 
 ---
 
@@ -47,7 +111,7 @@ Without it the app boots and the UI renders, but questions return a clear
 ```
 question → embed → retrieve top chunks from corpus index
         → rank (semantic + authority: Decree-Law > Decision > Guide)
-        → Claude generates a CITED answer (or escalates)  → UI
+        → the configured LLM generates a CITED answer (or escalates)  → UI
 ```
 - `lib/rag/` — chunking, retrieval, the seed/local-index/DB sources
 - `lib/ai/` — model config, the **cited-or-escalate answer contract**, the answer engine

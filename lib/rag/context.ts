@@ -156,10 +156,10 @@ export async function getRelevantChunks(
       id: r.id,
       content: r.content,
       articleRef: r.articleRef,
-      sourceUrl: null,
+      sourceUrl: r.sourceUrl,
       effectiveDate: null,
       instrument: null,
-      docTitle: null,
+      docTitle: r.docTitle,
     }));
   } else {
     const index = loadLocalIndex();

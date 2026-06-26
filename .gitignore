@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/test-invoices
 
 # next.js
 /.next/
@@ -52,3 +53,4 @@ lib/rag/corpus-index.json
 
 # playwright mcp scratch output
 .playwright-mcp/
+.env*.local

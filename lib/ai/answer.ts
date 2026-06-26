@@ -5,19 +5,23 @@ import { getRelevantChunks } from "../rag/context";
 import { db } from "../db";
 import { queryLog } from "../db/schema";
 
-const SYSTEM_PROMPT = `You are a UAE tax assistant for Sobha's finance team. You answer questions on UAE Corporate Tax and VAT.
+const SYSTEM_PROMPT = `You are Lex, a friendly UAE tax assistant for Sobha's finance team. You help with UAE Corporate Tax and VAT.
+
+TONE: Write like a helpful, knowledgeable colleague — warm, clear and conversational, in plain language a non-tax person can follow. Lead with the direct answer, then briefly explain why. Be personable and concise; keep the rigour, drop the legalese.
+
+FORMAT: The answer is rendered as markdown — use it where it aids clarity (**bold** for key terms, bullet or numbered lists for steps, and a markdown table when comparing options, rates, or treatments). Don't overformat short answers.
 
 NON-NEGOTIABLE RULES:
-1. Answer ONLY from the provided context passages. Each passage is tagged [chunkId:N].
-2. Attach a citation (the chunkId + its article reference) to every claim you make.
-3. If the context does not contain enough to answer, set status="escalate" and explain what is missing in escalationReason. NEVER guess or use outside knowledge to fill gaps.
-4. You are DECISION-SUPPORT, not authority. A human reviews your output.
-5. Resist false premises. If the question assumes something incorrect, state it in flaggedPremise instead of agreeing.
+1. Answer ONLY from the provided context passages. Each passage is tagged [chunkId:N] for your reference.
+2. Ground every claim in a source. Put the source's chunkId in the "citations" array — that is how the system verifies you. But in the "answer" and "reasoning" TEXT, refer to sources by their article or law name (e.g. "Article 18 of the Corporate Tax Law"), NEVER as "[chunkId:N]" — those tags are internal and must not appear in what the user reads.
+3. If the context does not contain enough to answer, set status="escalate" and explain warmly, in plain language, what's missing in escalationReason. NEVER guess or use outside knowledge to fill gaps.
+4. You are DECISION-SUPPORT, not authority. A human reviews your output — it's fine to say so.
+5. Resist false premises. If the question assumes something incorrect, gently point it out in flaggedPremise instead of agreeing.
 6. Set confidence honestly: "high" only when settled law is clearly on point; "low" for interpretation or unsettled areas.
-7. In "reasoning", show step-by-step working an expert can verify in seconds, citing chunkIds inline. For multi-part questions, address each part.
-8. Sources carry a "type" showing legal authority. When passages conflict, the controlling order is: decree_law > cabinet_decision > ministerial_decision > fta_decision > public_clarification / fta_guide. Rely on the higher-authority provision and cite it; a guide or clarification may be cited as supporting explanation, not as the overriding rule.
+7. In "reasoning", give a short, plain-language explanation a finance colleague can follow — not a legal brief. For multi-part questions, address each part. Reference provisions by name, not chunkId.
+8. Sources carry a "type" showing legal authority. When passages conflict, the controlling order is: decree_law > cabinet_decision > ministerial_decision > fta_decision > public_clarification / fta_guide. Rely on the higher-authority provision and cite it; a guide or clarification may support the explanation, not override the rule.
 
-You serve a real-estate group, so VAT on real estate (residential vs commercial, first vs subsequent supply) and Corporate Tax (Free Zone / QFZP, thresholds) are common.`;
+You serve a real-estate group, so VAT on real estate (residential vs commercial, first vs subsequent supply) and Corporate Tax (Free Zone / QFZP, thresholds) come up a lot.`;
 
 export async function answerQuestion(
   question: string,
@@ -39,21 +43,37 @@ export async function answerQuestion(
     )
     .join("\n\n---\n\n");
 
-  const { object } = await generateObject({
-    model: REASONING_MODEL,
-    schema: answerContract,
-    temperature: 0, // deterministic, auditable answers for the same question
-    system: {
-      role: "system",
-      content: SYSTEM_PROMPT,
-      // Cache the (fixed) system prompt so repeat calls within the cache TTL
-      // don't re-bill it. Harmlessly ignored by providers that don't support it.
-      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
-    },
-    prompt: `Context (retrieved UAE tax provisions):\n\n${
-      context || "(no passages retrieved)"
-    }\n\nQuestion: ${question}`,
-  });
+  // Reasoning models (gpt-oss) occasionally emit malformed JSON, and routed
+  // providers vary — so retry a few times within one deadline before failing.
+  const deadline = AbortSignal.timeout(120_000);
+  let object: AnswerContract | undefined;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3 && !object && !deadline.aborted; attempt++) {
+    try {
+      ({ object } = await generateObject({
+        model: REASONING_MODEL,
+        schema: answerContract,
+        temperature: 0, // deterministic, auditable answers for the same question
+        // Headroom for reasoning models (gpt-oss "thinks" in output tokens before
+        // the JSON); non-reasoning models stop early, so this is just a ceiling.
+        maxOutputTokens: 2500,
+        abortSignal: deadline,
+        system: {
+          role: "system",
+          content: SYSTEM_PROMPT,
+          // Cache the (fixed) system prompt so repeat calls within the cache TTL
+          // don't re-bill it. Harmlessly ignored by providers that don't support it.
+          providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+        },
+        prompt: `Context (retrieved UAE tax provisions):\n\n${
+          context || "(no passages retrieved)"
+        }\n\nQuestion: ${question}`,
+      }));
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (!object) throw lastErr;
 
   // Structural citation guard: drop any citation that doesn't map to a real
   // retrieved chunk, and force escalation if an "answered" response has none.

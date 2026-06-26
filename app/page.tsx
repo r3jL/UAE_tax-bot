@@ -5,6 +5,7 @@ import { Sidebar } from "./_components/sidebar";
 import { Topbar } from "./_components/topbar";
 import { PlannedModules } from "./_components/planned-modules";
 import { Drawer } from "./_components/drawer";
+import { Markdown } from "./_components/markdown";
 import {
   CONF_MAP,
   SAMPLES,
@@ -74,12 +75,19 @@ export default function Workspace() {
     void send(q);
   }
 
+  // Sample chips show a SIMULATED (canned) answer instantly — no backend call.
+  // Lets the workspace demo reliably regardless of model availability.
   function pick(key: string) {
     const s = SAMPLES.find((x) => x.key === key);
-    if (s && !loading) {
-      setModule("ask");
-      void send(s.q, s.filter);
-    }
+    if (!s || loading) return;
+    setModule("ask");
+    setFilter(s.filter);
+    setMessages((m) => [...m, { role: "user", text: s.q }]);
+    setLoading(true);
+    setTimeout(() => {
+      setMessages((m) => [...m, { role: "assistant", resp: s.resp, showReasoning: false }]);
+      setLoading(false);
+    }, 800);
   }
 
   function toggleMsg(idx: number) {
@@ -127,7 +135,7 @@ export default function Workspace() {
           overflow: "hidden",
         }}
       >
-        <Topbar module={module} role={role} />
+        <Topbar module={module} />
 
         <div
           style={{
@@ -231,12 +239,7 @@ export default function Workspace() {
               />
             </>
           ) : (
-            <PlannedModules
-              module={module}
-              role={role}
-              onOpenDrawer={setDrawer}
-              onSwitchReviewer={() => setRole("reviewer")}
-            />
+            <PlannedModules module={module} />
           )}
         </div>
       </div>
@@ -275,6 +278,19 @@ function UserMessage({ text, first }: { text: string; first: boolean }) {
   );
 }
 
+// Strip internal [chunkId:N] / 【chunkId:N】 tags (and the debris they leave)
+// from model text before it's shown to the user — citations live in their own
+// Sources block, so these markers are noise in the prose.
+function stripRefs(text: string): string {
+  return text
+    .replace(/[【[]\s*chunk\s*id\s*[:#]?\s*\d+\s*[\]】]/gi, "")
+    .replace(/chunk\s*id\s*[:#]?\s*\d+/gi, "")
+    .replace(/\(\s*\)|\[\s*\]/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([.,;:)])/g, "$1")
+    .trim();
+}
+
 function AssistantMessage({
   resp,
   showReasoning,
@@ -287,9 +303,11 @@ function AssistantMessage({
   const isEscalate = resp.status === "escalate";
   const isAnswered = resp.status === "answered";
   const conf = CONF_MAP[resp.confidence] ?? CONF_MAP.low;
-  const answerParas = resp.answer ? resp.answer.split("\n\n") : [];
-  const reasoningLines = resp.reasoning ? resp.reasoning.split("\n") : [];
-  const hasCitations = resp.citations && resp.citations.length > 0;
+  const cleanAnswer = stripRefs(resp.answer ?? "");
+  const cleanReasoning = stripRefs(resp.reasoning ?? "");
+  const hasReasoning = cleanReasoning.length > 0;
+  // Only answered responses have grounded sources to show; escalations don't.
+  const hasCitations = isAnswered && resp.citations && resp.citations.length > 0;
 
   return (
     <div style={{ margin: "18px 0 30px", animation: "lexrise .35s ease both" }}>
@@ -352,7 +370,8 @@ function AssistantMessage({
             Why this needs a human
           </div>
           <div style={{ fontFamily: SERIF, fontSize: 16, lineHeight: 1.7, color: "#33312c" }}>
-            {resp.escalationReason}
+            {stripRefs(resp.escalationReason ?? "") ||
+              "This one needs a finance reviewer's judgement before we can give a grounded answer."}
           </div>
         </div>
       )}
@@ -384,57 +403,41 @@ function AssistantMessage({
               </div>
             </div>
           )}
-          {answerParas.map((para, i) => (
-            <p
-              key={i}
-              style={{
-                fontFamily: SERIF,
-                fontSize: 16.5,
-                lineHeight: 1.72,
-                color: "#1f1f1c",
-                margin: "0 0 14px",
-              }}
-            >
-              {para}
-            </p>
-          ))}
+          {cleanAnswer && <Markdown serif size={16.5}>{cleanAnswer}</Markdown>}
         </>
       )}
 
-      <div style={{ marginTop: 8 }}>
-        <button
-          onClick={onToggle}
-          style={{
-            border: "none",
-            background: "none",
-            padding: "4px 0",
-            cursor: "pointer",
-            fontSize: 13,
-            fontWeight: 500,
-            color: "#8a8a85",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          <span style={{ fontSize: 9, width: 9, display: "inline-block" }}>
-            {showReasoning ? "▾" : "▸"}
-          </span>
-          {showReasoning ? "Hide reasoning" : "Show reasoning"}
-        </button>
-        {showReasoning && (
-          <div style={{ marginTop: 8, borderLeft: "2px solid #ececea", paddingLeft: 16 }}>
-            {reasoningLines.map((line, i) => (
-              <div
-                key={i}
-                style={{ fontSize: 14, lineHeight: 1.6, color: "#6b6b66", marginBottom: 6 }}
-              >
-                {line}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {isAnswered && hasReasoning && (
+        <div style={{ marginTop: 8 }}>
+          <button
+            onClick={onToggle}
+            style={{
+              border: "none",
+              background: "none",
+              padding: "4px 0",
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#8a8a85",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span style={{ fontSize: 9, width: 9, display: "inline-block" }}>
+              {showReasoning ? "▾" : "▸"}
+            </span>
+            {showReasoning ? "Hide reasoning" : "Show reasoning"}
+          </button>
+          {showReasoning && (
+            <div style={{ marginTop: 8, borderLeft: "2px solid #ececea", paddingLeft: 16 }}>
+              <Markdown size={14} color="#6b6b66">
+                {cleanReasoning}
+              </Markdown>
+            </div>
+          )}
+        </div>
+      )}
 
       {hasCitations && (
         <div style={{ marginTop: 20 }}>

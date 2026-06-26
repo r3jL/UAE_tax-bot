@@ -1,13 +1,10 @@
-import { config } from "dotenv";
-// Load .env.local first (Next.js convention + what the README/.env.example use),
-// then .env as a fallback. dotenv won't override vars already set.
-config({ path: ".env.local" });
-config();
+// MUST be first: loads .env.local before lib/ai/models (imported transitively
+// below) resolves the active provider at module-eval time. See load-env.ts.
+import "./load-env";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join, extname, basename, relative } from "path";
 import { embedMany } from "ai";
 import { extractText, getDocumentProxy } from "unpdf";
-import { db } from "../lib/db";
 import { documents, lawChunks } from "../lib/db/schema";
 import { chunkDocument, hashContent, type DocKind } from "../lib/rag/chunk";
 import { EMBEDDING_MODEL } from "../lib/ai/models";
@@ -24,6 +21,12 @@ import { LOCAL_INDEX_PATH, type LocalEntry } from "../lib/rag/context";
 const CORPUS = join(process.cwd(), "corpus");
 const SUPPORTED = new Set([".pdf", ".txt", ".md"]);
 const BATCH = 64; // embeddings per request
+// Client-side throttle for rate-limited embedding tiers (quota is counted per
+// chunk, not per request). e.g. Google AI Studio free = 100/min → set EMBED_RPM=90.
+// 0 = no throttle (default; gateway/local providers don't need it).
+const EMBED_RPM = Number(process.env.EMBED_RPM ?? 0);
+const MS_PER_ITEM = EMBED_RPM > 0 ? 60_000 / EMBED_RPM : 0;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -107,11 +110,20 @@ async function readDocText(file: string): Promise<string> {
 async function embedInBatches(values: string[]): Promise<number[][]> {
   const all: number[][] = [];
   for (let i = 0; i < values.length; i += BATCH) {
+    const slice = values.slice(i, i + BATCH);
+    const started = Date.now();
     const { embeddings } = await embedMany({
       model: EMBEDDING_MODEL,
-      values: values.slice(i, i + BATCH),
+      values: slice,
+      // Ride out brief per-minute rate-limit windows (the SDK honours retry-after).
+      maxRetries: 6,
     });
     all.push(...embeddings);
+    // Pace to stay under EMBED_RPM (per-chunk quota).
+    if (MS_PER_ITEM) {
+      const wait = slice.length * MS_PER_ITEM - (Date.now() - started);
+      if (wait > 0) await sleep(wait);
+    }
   }
   return all;
 }
@@ -129,6 +141,11 @@ async function main() {
       ? "Mode: database (Neon + pgvector)\n"
       : "Mode: local index file (no database)\n",
   );
+
+  // Import the DB client lazily, AFTER dotenv (loaded at module top) has
+  // populated DATABASE_URL — otherwise lib/db binds to its placeholder URL
+  // because ESM hoists imports above the config() calls above.
+  const { db } = await import("../lib/db");
 
   const files = walk(CORPUS);
   if (files.length === 0) {

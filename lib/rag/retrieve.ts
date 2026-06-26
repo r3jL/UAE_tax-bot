@@ -1,7 +1,7 @@
 import { embed } from "ai";
 import { cosineDistance, sql, desc, eq } from "drizzle-orm";
 import { db } from "../db";
-import { lawChunks } from "../db/schema";
+import { lawChunks, documents } from "../db/schema";
 import { EMBEDDING_MODEL } from "../ai/models";
 
 export interface RetrievedChunk {
@@ -9,6 +9,8 @@ export interface RetrievedChunk {
   content: string;
   articleRef: string | null;
   documentId: number;
+  docTitle: string | null;
+  sourceUrl: string | null;
   similarity: number;
 }
 
@@ -29,9 +31,12 @@ export async function retrieve(
       content: lawChunks.content,
       articleRef: lawChunks.articleRef,
       documentId: lawChunks.documentId,
+      docTitle: documents.title,
+      sourceUrl: documents.sourceUrl,
       similarity,
     })
     .from(lawChunks)
+    .leftJoin(documents, eq(lawChunks.documentId, documents.id))
     .where(opts.taxType ? eq(lawChunks.taxType, opts.taxType) : undefined)
     .orderBy(desc(similarity))
     .limit(opts.topK ?? 8);

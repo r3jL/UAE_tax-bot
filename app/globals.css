@@ -93,3 +93,21 @@ select:focus {
     opacity: 1;
   }
 }
+
+/* Thin horizontal scroll for long filenames in a small box. */
+.lex-xscroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+.lex-xscroll::-webkit-scrollbar {
+  height: 5px;
+}
+.lex-xscroll::-webkit-scrollbar-thumb {
+  background: #d8d8d2;
+  border-radius: 4px;
+}
+.lex-xscroll::-webkit-scrollbar-track {
+  background: transparent;
+}

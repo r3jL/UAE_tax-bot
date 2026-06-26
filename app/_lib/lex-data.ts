@@ -52,6 +52,145 @@ export interface Sample {
   resp: AnswerResult;
 }
 
+// ── Invoice Upload / Vendor VAT Check ────────────────────────────────────────
+// Mirrors invoiceFieldsContract + determinationContract from lib/ai/contracts.
+export type SupplyType = "goods" | "services" | "mixed" | "unknown";
+
+export interface InvoiceFieldsData {
+  vendorName: string;
+  vendorCountry: string;
+  vendorTRN: string | null;
+  currency: string;
+  subtotal: string;
+  vatAmount: string;
+  total: string;
+  invoiceDate: string | null;
+  description: string;
+  lineItems: { description: string; amount: string }[];
+  supplyType: SupplyType;
+}
+
+export type Treatment =
+  | "standard_5"
+  | "zero_rated"
+  | "exempt"
+  | "out_of_scope"
+  | "reverse_charge"
+  | "designated_zone"
+  | "unknown";
+
+export interface VatComputationData {
+  currency: string;
+  net: number | null;
+  vatCharged: number | null;
+  total: number | null;
+  expectedRate: number | null;
+  expectedVat: number | null;
+  selfAccountedVat: number | null;
+  recoverableInputVat: number | null;
+  mismatch: {
+    status: "match" | "overcharged" | "undercharged" | "vat_not_expected" | "unknown";
+    delta: number | null;
+    message: string;
+  };
+  notes: string[];
+}
+
+export interface Determination {
+  treatment: Treatment;
+  inputVatRecoverable: "yes" | "no" | "partial" | "na";
+  whatToDo: string;
+  confirmWithFA: boolean;
+  citations: Citation[];
+  confidence: Confidence;
+  computation?: VatComputationData;
+  error?: string;
+}
+
+export const MISMATCH_LABELS: Record<VatComputationData["mismatch"]["status"], string> = {
+  match: "VAT matches",
+  overcharged: "Overcharged",
+  undercharged: "Undercharged",
+  vat_not_expected: "VAT shouldn’t apply",
+  unknown: "Not compared",
+};
+
+// A SIMULATED (canned) invoice result — instant demo, no backend/model call.
+export const SAMPLE_INVOICE: { fields: InvoiceFieldsData; determination: Determination } = {
+  fields: {
+    vendorName: "Al Hamra Ready-Mix Concrete LLC",
+    vendorCountry: "United Arab Emirates",
+    vendorTRN: "100447821900003",
+    currency: "AED",
+    subtotal: "100,800.00",
+    vatAmount: "5,040.00",
+    total: "105,840.00",
+    invoiceDate: "04 May 2026",
+    description: "Ready-mix concrete supply & delivery and concrete pump hire",
+    lineItems: [
+      { description: "Ready-mix concrete, Grade C40 (supply & delivery)", amount: "AED 91,200.00" },
+      { description: "Concrete pump hire", amount: "AED 9,600.00" },
+    ],
+    supplyType: "goods",
+  },
+  determination: {
+    treatment: "standard_5",
+    inputVatRecoverable: "yes",
+    whatToDo:
+      "Record the supplier's invoice and claim the AED 5,040 VAT as input tax on your next VAT return — the concrete and pump hire are used for your taxable property development, so the input VAT is recoverable. Keep the supplier's TRN on file.",
+    confirmWithFA: false,
+    confidence: "high",
+    citations: [
+      {
+        articleRef: "VAT Real Estate Guide (VATGRE1)",
+        sourceUrl: "https://tax.gov.ae/en/taxes/vat.aspx",
+        effectiveDate: null,
+      },
+    ],
+    computation: {
+      currency: "AED",
+      net: 100800,
+      vatCharged: 5040,
+      total: 105840,
+      expectedRate: 0.05,
+      expectedVat: 5040,
+      selfAccountedVat: null,
+      recoverableInputVat: 5040,
+      mismatch: { status: "match", delta: 0, message: "VAT charged matches the expected 5%." },
+      notes: [],
+    },
+  },
+};
+
+// Editable field rows shown in the "Extracted fields — confirm" card.
+export const INVOICE_FIELD_LABELS: { key: keyof InvoiceFieldsData; label: string }[] = [
+  { key: "vendorName", label: "Vendor" },
+  { key: "vendorCountry", label: "Country" },
+  { key: "vendorTRN", label: "Vendor TRN" },
+  { key: "description", label: "Description" },
+  { key: "currency", label: "Currency" },
+  { key: "subtotal", label: "Subtotal" },
+  { key: "vatAmount", label: "VAT shown" },
+  { key: "total", label: "Total" },
+];
+
+export const TREATMENT_LABELS: Record<Treatment, string> = {
+  standard_5: "Standard-rated (5%)",
+  zero_rated: "Zero-rated (0%)",
+  exempt: "Exempt",
+  out_of_scope: "Out of scope",
+  reverse_charge: "Reverse charge",
+  designated_zone: "Designated Zone",
+  unknown: "Needs review",
+};
+
+export const RECOVERABLE_LABELS: Record<Determination["inputVatRecoverable"], string> = {
+  yes: "Input VAT recoverable",
+  no: "Input VAT not recoverable",
+  partial: "Input VAT partially recoverable",
+  na: "Recoverability N/A",
+};
+
 export interface ModuleMeta {
   title: string;
   sub: string;
@@ -99,8 +238,8 @@ export const MODULES: Record<ModuleKey, ModuleMeta> = {
 
 export const NAV_ORDER: ModuleKey[] = [
   "ask",
-  "vendor",
   "invoice",
+  "vendor",
   "register",
   "queue",
   "alerts",

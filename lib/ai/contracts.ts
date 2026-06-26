@@ -15,10 +15,16 @@ export const answerContract = z.object({
   status: z
     .enum(["answered", "escalate"])
     .describe("'escalate' when the provided context does not support a grounded answer"),
-  answer: z.string().describe("The answer, grounded only in the provided context. Empty if escalating."),
+  answer: z
+    .string()
+    .describe(
+      "The answer for the user — warm, clear and conversational, like a knowledgeable colleague explaining in plain language. Grounded only in the provided context. Empty if escalating. Refer to sources by article/law name; never include internal [chunkId:N] tags.",
+    ),
   reasoning: z
     .string()
-    .describe("Step-by-step working an expert can verify quickly. Cite chunkIds inline."),
+    .describe(
+      "A short, plain-language explanation of how you reached the answer that a finance colleague can follow. Reference provisions by article/law name, never internal chunkId tags.",
+    ),
   citations: z.array(citationSchema),
   confidence: z
     .enum(["high", "medium", "low"])
@@ -54,3 +60,51 @@ export const determinationContract = z.object({
 });
 
 export type DeterminationContract = z.infer<typeof determinationContract>;
+
+// Fields extracted from an uploaded vendor invoice (PDF text or image OCR).
+// These are shown to the user to confirm/edit before the VAT determination runs.
+export const invoiceFieldsContract = z.object({
+  vendorName: z.string().describe("Supplier / vendor name on the invoice. '' if not found."),
+  vendorCountry: z
+    .string()
+    .describe("Vendor's country, full name e.g. 'United Arab Emirates', 'United Kingdom'. '' if unclear."),
+  vendorTRN: z
+    .string()
+    .nullable()
+    .describe("Vendor's UAE Tax Registration Number (15 digits) if shown, else null."),
+  currency: z.string().describe("Invoice currency code, e.g. 'AED', 'GBP', 'USD'. '' if unclear."),
+  subtotal: z
+    .string()
+    .describe(
+      "The invoice's NET total excluding VAT — the grand subtotal row (e.g. 'Net total (excl. VAT)'), with currency. Not a single line. '' only if the invoice shows no amounts.",
+    ),
+  vatAmount: z
+    .string()
+    .describe(
+      "The TOTAL VAT charged on the whole invoice — the grand total VAT row (e.g. 'Total VAT (charged on invoice)'), as written. If only per-line VAT is shown, sum them. Use 'None' ONLY when no VAT is charged anywhere on the invoice.",
+    ),
+  total: z
+    .string()
+    .describe(
+      "The invoice grand total / total payable — e.g. 'Invoice Total' or 'Total Payable', with currency. '' only if the invoice shows no amounts.",
+    ),
+  invoiceDate: z.string().nullable().describe("Invoice date as shown, or null."),
+  description: z
+    .string()
+    .describe(
+      "A brief summary of WHAT was supplied — the goods/services themselves, derived from the line items, e.g. 'Ready-mix concrete and concrete pump hire'. Do NOT copy invoice notes, payment terms, project references, or disclaimers.",
+    ),
+  lineItems: z
+    .array(
+      z.object({
+        description: z.string().describe("What this line item covers"),
+        amount: z.string().describe("Line amount as shown, with currency"),
+      }),
+    )
+    .describe("EVERY line item / charge on the invoice — include all of them, never drop a line."),
+  supplyType: z
+    .enum(["goods", "services", "mixed", "unknown"])
+    .describe("Whether the supply is goods, services, mixed, or unclear."),
+});
+
+export type InvoiceFields = z.infer<typeof invoiceFieldsContract>;
