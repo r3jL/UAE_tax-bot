@@ -26,6 +26,8 @@ export default function Workspace() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<TaxFilter>("All");
   const [loading, setLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState("Reviewing FTA law");
+  const [files, setFiles] = useState<File[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [drawer, setDrawer] = useState<QueueItem | null>(null);
 
@@ -42,29 +44,63 @@ export default function Workspace() {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
     const effFilter = filterOverride ?? filter;
+    const attached = files;
 
     setQ("");
+    setFiles([]);
     if (filterOverride) setFilter(filterOverride);
-    setMessages((m) => [...m, { role: "user", text: trimmed }]);
+    setMessages((m) => [
+      ...m,
+      {
+        role: "user",
+        text: trimmed,
+        files: attached.length ? attached.map((f) => f.name) : undefined,
+      },
+    ]);
+    setLoadingLabel(attached.length ? "Reading your document" : "Reviewing FTA law");
     setLoading(true);
 
     let resp: AnswerResult;
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: trimmed,
-          taxType: filterToTaxType(effFilter),
-        }),
-      });
+      const taxType = filterToTaxType(effFilter);
+      let res: Response;
+      if (attached.length) {
+        // With attachments we send multipart so the files ride along; the server
+        // extracts their text and uses it as extra context.
+        const fd = new FormData();
+        fd.append("question", trimmed);
+        if (taxType) fd.append("taxType", taxType);
+        attached.forEach((f) => fd.append("files", f));
+        res = await fetch("/api/chat", { method: "POST", body: fd });
+      } else {
+        res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: trimmed, taxType }),
+        });
+      }
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error ?? "Request failed");
       resp = data as AnswerResult;
-    } catch {
-      // Offline / unconfigured backend: fall back to the canned sample matcher
-      // so the workspace stays demonstrable on its own.
-      resp = resolveSample(trimmed);
+    } catch (err) {
+      if (attached.length) {
+        // For a document question, a canned sample would be nonsense — surface
+        // the real problem (e.g. a scanned PDF) as a clear escalation instead.
+        resp = {
+          status: "escalate",
+          answer: "",
+          reasoning: "",
+          citations: [],
+          confidence: "low",
+          flaggedPremise: null,
+          escalationReason:
+            (err as Error)?.message || "I couldn't read the attached file. Please try another copy.",
+        };
+      } else {
+        // Offline / unconfigured backend: fall back to the canned sample matcher
+        // so the workspace stays demonstrable on its own.
+        resp = resolveSample(trimmed);
+      }
     }
 
     setMessages((m) => [...m, { role: "assistant", resp, showReasoning: false }]);
@@ -174,7 +210,8 @@ export default function Workspace() {
                       >
                         Ask a Corporate Tax or VAT question. I answer from official UAE FTA
                         law with citations — and escalate to your finance team rather than
-                        guess when the law can&apos;t settle it.
+                        guess when the law can&apos;t settle it. You can also attach a
+                        contract or invoice (PDF or image) and ask about it.
                       </p>
 
                       <div
@@ -213,7 +250,7 @@ export default function Workspace() {
 
                   {messages.map((m, i) =>
                     m.role === "user" ? (
-                      <UserMessage key={i} text={m.text} first={i === 0} />
+                      <UserMessage key={i} text={m.text} files={m.files} first={i === 0} />
                     ) : (
                       <AssistantMessage
                         key={i}
@@ -224,7 +261,7 @@ export default function Workspace() {
                     ),
                   )}
 
-                  {loading && <TypingIndicator />}
+                  {loading && <TypingIndicator label={loadingLabel} />}
                 </div>
               </div>
 
@@ -232,8 +269,10 @@ export default function Workspace() {
                 q={q}
                 filter={filter}
                 loading={loading}
+                files={files}
                 onQ={setQ}
                 onFilter={setFilter}
+                onFiles={setFiles}
                 onKeyDown={onKeyDown}
                 onAsk={ask}
               />
@@ -251,16 +290,67 @@ export default function Workspace() {
 
 // ── Ask thread pieces ────────────────────────────────────────────────────────
 
-function UserMessage({ text, first }: { text: string; first: boolean }) {
+function UserMessage({
+  text,
+  files,
+  first,
+}: {
+  text: string;
+  files?: string[];
+  first: boolean;
+}) {
   return (
     <div
       style={{
         display: "flex",
-        justifyContent: "flex-end",
+        flexDirection: "column",
+        alignItems: "flex-end",
         margin: first ? "0 0 4px" : "26px 0 4px",
         animation: "lexrise .3s ease both",
       }}
     >
+      {files && files.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            justifyContent: "flex-end",
+            maxWidth: "80%",
+            marginBottom: 6,
+          }}
+        >
+          {files.map((name, i) => (
+            <span
+              key={i}
+              title={name}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                maxWidth: 220,
+                background: "#fff",
+                border: "1px solid #e6e6e2",
+                borderRadius: 10,
+                padding: "5px 10px",
+                fontSize: 12,
+                color: "#5a564d",
+              }}
+            >
+              <span style={{ flex: "none" }}>📄</span>
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {name}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
       <div
         style={{
           maxWidth: "80%",
@@ -496,13 +586,13 @@ function AssistantMessage({
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ label = "Reviewing FTA law" }: { label?: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 9, margin: "18px 0 30px" }}>
       <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".13em", color: "#b4b4ae" }}>
         LEX
       </span>
-      <span style={{ fontSize: 13, color: "#a8a8a2" }}>Reviewing FTA law</span>
+      <span style={{ fontSize: 13, color: "#a8a8a2" }}>{label}</span>
       <span style={{ display: "inline-flex", gap: 3 }}>
         {[0, 0.15, 0.3].map((delay) => (
           <span
@@ -521,26 +611,98 @@ function TypingIndicator() {
   );
 }
 
+const MAX_FILES = 4;
+const FILE_ACCEPT = "image/*,application/pdf";
+
 function Composer({
   q,
   filter,
   loading,
+  files,
   onQ,
   onFilter,
+  onFiles,
   onKeyDown,
   onAsk,
 }: {
   q: string;
   filter: TaxFilter;
   loading: boolean;
+  files: File[];
   onQ: (v: string) => void;
   onFilter: (v: TaxFilter) => void;
+  onFiles: React.Dispatch<React.SetStateAction<File[]>>;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onAsk: () => void;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function addFiles(list: FileList | null) {
+    if (!list) return;
+    const incoming = Array.from(list);
+    onFiles((prev) => {
+      const merged = [...prev];
+      for (const f of incoming) {
+        if (merged.length >= MAX_FILES) break;
+        if (!merged.some((p) => p.name === f.name && p.size === f.size)) merged.push(f);
+      }
+      return merged;
+    });
+  }
+
   return (
     <div style={{ flex: "none", borderTop: "1px solid #ececea" }}>
       <div style={{ maxWidth: 740, margin: "0 auto", padding: "14px 28px 16px" }}>
+        {files.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
+            {files.map((f, i) => (
+              <span
+                key={i}
+                title={f.name}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  maxWidth: 240,
+                  background: "#fff",
+                  border: "1px solid #e6e6e2",
+                  borderRadius: 10,
+                  padding: "5px 8px 5px 10px",
+                  fontSize: 12,
+                  color: "#5a564d",
+                }}
+              >
+                <span style={{ flex: "none" }}>📄</span>
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {f.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onFiles((prev) => prev.filter((_, j) => j !== i))}
+                  aria-label={`Remove ${f.name}`}
+                  style={{
+                    flex: "none",
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    color: "#a8a8a2",
+                    fontSize: 15,
+                    lineHeight: 1,
+                    padding: 0,
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
           <div style={{ position: "relative", flex: "none" }}>
             <select
@@ -584,13 +746,60 @@ function Composer({
               flex: 1,
               display: "flex",
               alignItems: "flex-end",
-              gap: 8,
+              gap: 4,
               border: "1px solid #e0e0db",
               borderRadius: 24,
               background: "#fff",
-              padding: "6px 6px 6px 18px",
+              padding: "6px 6px 6px 8px",
             }}
           >
+            <input
+              ref={fileRef}
+              type="file"
+              accept={FILE_ACCEPT}
+              multiple
+              hidden
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={loading || files.length >= MAX_FILES}
+              title={
+                files.length >= MAX_FILES
+                  ? `Up to ${MAX_FILES} files`
+                  : "Attach images or PDFs for context"
+              }
+              style={{
+                flex: "none",
+                width: 38,
+                height: 38,
+                border: "none",
+                borderRadius: "50%",
+                background: "none",
+                color: files.length >= MAX_FILES ? "#cdcdc8" : "#8a8a85",
+                cursor: loading || files.length >= MAX_FILES ? "default" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <svg
+                width="19"
+                height="19"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
             <textarea
               value={q}
               onChange={(e) => onQ(e.target.value)}

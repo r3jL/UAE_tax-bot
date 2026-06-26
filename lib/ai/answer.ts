@@ -21,11 +21,16 @@ NON-NEGOTIABLE RULES:
 7. In "reasoning", give a short, plain-language explanation a finance colleague can follow — not a legal brief. For multi-part questions, address each part. Reference provisions by name, not chunkId.
 8. Sources carry a "type" showing legal authority. When passages conflict, the controlling order is: decree_law > cabinet_decision > ministerial_decision > fta_decision > public_clarification / fta_guide. Rely on the higher-authority provision and cite it; a guide or clarification may support the explanation, not override the rule.
 
+ATTACHED DOCUMENTS: The user may upload their own document(s) — a contract, invoice, tax notice, etc. When present, their text appears under "ATTACHED DOCUMENT(S)" in the context. Use them to answer questions about their specifics, and apply the UAE tax provisions to them. You may quote the attached document directly. Ground any conclusion about the LAW in the provided provisions and cite their chunkId; facts that come only from the attached document don't need a chunkId. If a document is attached but unreadable or irrelevant to the question, say so plainly.
+
 You serve a real-estate group, so VAT on real estate (residential vs commercial, first vs subsequent supply) and Corporate Tax (Free Zone / QFZP, thresholds) come up a lot.`;
 
 export async function answerQuestion(
   question: string,
-  opts: { taxType?: "CT" | "VAT" } = {},
+  opts: {
+    taxType?: "CT" | "VAT";
+    attachedDocs?: { name: string; text: string }[];
+  } = {},
 ): Promise<AnswerContract & { retrievedChunkIds: number[] }> {
   const chunks = await getRelevantChunks(question, {
     taxType: opts.taxType,
@@ -42,6 +47,14 @@ export async function answerQuestion(
         `${c.effectiveDate ? ` | effective: ${c.effectiveDate}` : ""}\n${c.content}`,
     )
     .join("\n\n---\n\n");
+
+  // The user's own uploaded files (contract, invoice, notice…) as extra context.
+  const attached = opts.attachedDocs ?? [];
+  const attachedSection = attached.length
+    ? `\n\nATTACHED DOCUMENT(S) the user uploaded:\n\n${attached
+        .map((d) => `=== ${d.name} ===\n${d.text}`)
+        .join("\n\n---\n\n")}`
+    : "";
 
   // Reasoning models (gpt-oss) occasionally emit malformed JSON, and routed
   // providers vary — so retry a few times within one deadline before failing.
@@ -67,7 +80,7 @@ export async function answerQuestion(
         },
         prompt: `Context (retrieved UAE tax provisions):\n\n${
           context || "(no passages retrieved)"
-        }\n\nQuestion: ${question}`,
+        }${attachedSection}\n\nQuestion: ${question}`,
       }));
     } catch (e) {
       lastErr = e;
@@ -81,7 +94,11 @@ export async function answerQuestion(
   const citations = object.citations.filter((c) => validIds.has(c.chunkId));
   const result: AnswerContract = { ...object, citations };
 
-  if (result.status === "answered" && citations.length === 0) {
+  // Normally an answered response with no grounded citation is forced to
+  // escalate. But when the user attached documents, the answer may legitimately
+  // be grounded in those (e.g. "your contract says…") with no corpus citation,
+  // so we don't force escalation in that case.
+  if (result.status === "answered" && citations.length === 0 && attached.length === 0) {
     result.status = "escalate";
     result.escalationReason =
       result.escalationReason ??

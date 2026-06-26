@@ -41,7 +41,7 @@ export interface AnswerResult {
 }
 
 export type Message =
-  | { role: "user"; text: string }
+  | { role: "user"; text: string; files?: string[] }
   | { role: "assistant"; resp: AnswerResult; showReasoning: boolean };
 
 export interface Sample {
