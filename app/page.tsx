@@ -7,6 +7,7 @@ import { Drawer } from "./_components/drawer";
 import { Markdown } from "./_components/markdown";
 import {
   CONF_MAP,
+  MONO,
   SERIF,
   filterToTaxType,
   resolveSample,
@@ -337,10 +338,10 @@ function UserMessage({
           maxWidth: "80%",
           background: "#f3f2ee",
           borderRadius: "16px 16px 5px 16px",
-          padding: "12px 16px",
-          fontSize: 15.5,
-          lineHeight: 1.5,
-          fontFamily: SERIF,
+          padding: "11px 15px",
+          fontSize: 14,
+          lineHeight: 1.55,
+          fontFamily: MONO,
         }}
       >
         {text}
@@ -722,7 +723,7 @@ function Composer({
               color: "#1a1a1a",
               resize: "none",
               outline: "none",
-              fontFamily: SERIF,
+              fontFamily: MONO,
               maxHeight: 168,
             }}
           />

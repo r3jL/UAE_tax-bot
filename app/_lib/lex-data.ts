@@ -5,7 +5,15 @@
 // reachable. Every other module is "Planned" in the design and is rendered from
 // the showcase data below.
 
-export const SERIF = "var(--font-serif), Georgia, 'Times New Roman', serif";
+// Display / heading typeface. Historically a serif; now Inter (the free Söhne
+// stand-in) so the whole UI matches ChatGPT's neo-grotesque look. Name kept as
+// SERIF since it's referenced widely.
+export const SERIF =
+  "var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+
+// Monospace — stands in for Söhne Mono, used for code and user inputs.
+export const MONO =
+  "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace";
 
 export type Confidence = "high" | "medium" | "low";
 export type Role = "staff" | "reviewer";

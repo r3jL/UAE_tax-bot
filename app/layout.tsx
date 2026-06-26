@@ -1,24 +1,22 @@
 import type { Metadata } from "next";
-import { Newsreader, IBM_Plex_Sans } from "next/font/google";
+import { Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-// Newsreader — a literary, book-like serif. The website's primary typeface
-// (set as the body default in globals.css) for a warm, "reading a book" feel.
-// True italics included for emphasis. Exposed as --font-serif.
-const serif = Newsreader({
+// Inter — a free neo-grotesque that stands in for ChatGPT's Söhne (a licensed
+// Klim typeface we can't embed without a licence). The website's UI default,
+// exposed as --font-sans.
+const sans = Inter({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  style: ["normal", "italic"],
-  variable: "--font-serif",
+  variable: "--font-sans",
   display: "swap",
 });
 
-// IBM Plex Sans — kept as --font-sans for any element that wants a neutral UI
-// typeface, though the book serif is now the default everywhere.
-const sans = IBM_Plex_Sans({
+// IBM Plex Mono — stands in for Söhne Mono, used for code and user inputs.
+// Exposed as --font-mono.
+const mono = IBM_Plex_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-sans",
+  weight: ["400", "500"],
+  variable: "--font-mono",
   display: "swap",
 });
 
@@ -36,7 +34,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${sans.variable} ${serif.variable} h-full antialiased`}
+      className={`${sans.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="h-full">{children}</body>
     </html>

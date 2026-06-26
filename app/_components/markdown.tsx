@@ -2,7 +2,7 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { SERIF } from "../_lib/lex-data";
+import { MONO, SERIF } from "../_lib/lex-data";
 
 // Renders the model's markdown (bold, lists, tables, links) styled to match the
 // app. The model already emits markdown — this just displays it properly.
@@ -54,7 +54,7 @@ export function Markdown({
                 borderRadius: 4,
                 padding: "1px 5px",
                 fontSize: "0.88em",
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                fontFamily: MONO,
               }}
             >
               {children}
