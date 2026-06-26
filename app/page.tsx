@@ -612,6 +612,9 @@ function Composer({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const mirrorRef = useRef<HTMLTextAreaElement>(null);
+  const [multiline, setMultiline] = useState(false);
 
   function addFiles(list: FileList | null) {
     if (!list) return;
@@ -626,14 +629,31 @@ function Composer({
     });
   }
 
-  // Auto-grow: stay a single rounded line, expand into a rounded rectangle as
-  // the text wraps onto more lines (capped, then scrolls).
+  // Decide single-line vs layered by measuring the text at a FIXED width (the
+  // single-row text width) with an off-screen mirror. Because the width never
+  // changes, the decision can't flip-flop as the visible layout switches.
+  useEffect(() => {
+    const box = boxRef.current;
+    const m = mirrorRef.current;
+    if (!box || !m) return;
+    const rowWidth = box.clientWidth - 14 - 80; // box padding + (+ , send) + gaps
+    m.style.width = `${Math.max(rowWidth, 40)}px`;
+    m.value = "x";
+    m.style.height = "0px";
+    const oneLine = m.scrollHeight;
+    m.value = q || "x";
+    m.style.height = "0px";
+    setMultiline(q.includes("\n") || m.scrollHeight > oneLine + 4);
+  }, [q]);
+
+  // Auto-grow the visible textarea to fit its content. Re-runs when the layout
+  // mode flips, since the available width — and so the height — changes.
   useEffect(() => {
     const ta = taRef.current;
     if (!ta) return;
     ta.style.height = "0px";
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-  }, [q]);
+  }, [q, multiline]);
 
   const canSend = !loading && q.trim().length > 0;
   const atFileLimit = files.length >= MAX_FILES;
@@ -642,7 +662,9 @@ function Composer({
     <div style={{ width: "100%", padding: "0 24px" }}>
       <div style={{ maxWidth: 740, margin: "0 auto" }}>
         <div
+          ref={boxRef}
           style={{
+            position: "relative",
             border: "1px solid #e6e6e2",
             borderRadius: 24,
             background: "#fff",
@@ -709,13 +731,43 @@ function Composer({
             }}
           />
 
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+          {/* off-screen mirror: measures text wrap at the single-row width */}
+          <textarea
+            ref={mirrorRef}
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: -9999,
+              height: 0,
+              overflow: "hidden",
+              visibility: "hidden",
+              pointerEvents: "none",
+              boxSizing: "border-box",
+              border: "none",
+              padding: "7px 6px",
+              fontSize: 15.5,
+              lineHeight: 1.4,
+              fontFamily: SERIF,
+              resize: "none",
+              whiteSpace: "pre-wrap",
+              overflowWrap: "break-word",
+            }}
+          />
+
+          {/* flex-wrap row: single line by default; when layered, the textarea
+              takes the full top row and the buttons drop below. Switching is
+              CSS-only (order/flex-basis) so the textarea keeps focus. */}
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 6 }}>
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
               disabled={loading || atFileLimit}
               title={atFileLimit ? `Up to ${MAX_FILES} files` : "Attach images or PDFs for context"}
               style={{
+                order: multiline ? 1 : 0,
                 flex: "none",
                 width: 34,
                 height: 34,
@@ -751,7 +803,10 @@ function Composer({
               placeholder="Ask a UAE tax question…"
               rows={1}
               style={{
-                flex: 1,
+                order: multiline ? 0 : 1,
+                flexGrow: 1,
+                flexShrink: 1,
+                flexBasis: multiline ? "100%" : "0%",
                 boxSizing: "border-box",
                 border: "none",
                 background: "none",
@@ -764,6 +819,7 @@ function Composer({
                 fontFamily: SERIF,
                 maxHeight: 200,
                 overflowY: "auto",
+                transition: "height .12s ease",
               }}
             />
 
@@ -772,6 +828,8 @@ function Composer({
               disabled={!canSend}
               title="Send"
               style={{
+                order: 2,
+                marginLeft: multiline ? "auto" : 0,
                 flex: "none",
                 width: 34,
                 height: 34,
