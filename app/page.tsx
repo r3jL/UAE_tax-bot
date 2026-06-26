@@ -7,7 +7,6 @@ import { Drawer } from "./_components/drawer";
 import { Markdown } from "./_components/markdown";
 import {
   CONF_MAP,
-  SAMPLES,
   SERIF,
   filterToTaxType,
   resolveSample,
@@ -108,21 +107,6 @@ export default function Workspace() {
 
   function ask() {
     void send(q);
-  }
-
-  // Sample chips show a SIMULATED (canned) answer instantly — no backend call.
-  // Lets the workspace demo reliably regardless of model availability.
-  function pick(key: string) {
-    const s = SAMPLES.find((x) => x.key === key);
-    if (!s || loading) return;
-    setModule("ask");
-    setFilter(s.filter);
-    setMessages((m) => [...m, { role: "user", text: s.q }]);
-    setLoading(true);
-    setTimeout(() => {
-      setMessages((m) => [...m, { role: "assistant", resp: s.resp, showReasoning: false }]);
-      setLoading(false);
-    }, 800);
   }
 
   function toggleMsg(idx: number) {
@@ -234,37 +218,7 @@ export default function Workspace() {
                   How can I help with UAE tax?
                 </h1>
                 {composerEl}
-                <div
-                  style={{
-                    width: "100%",
-                    maxWidth: 740,
-                    padding: "18px 24px 0",
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 8,
-                    justifyContent: "center",
-                  }}
-                >
-                  {SAMPLES.map((s) => (
-                    <button
-                      key={s.key}
-                      onClick={() => pick(s.key)}
-                      style={{
-                        border: "1px solid #e6e6e2",
-                        background: "#fff",
-                        borderRadius: 99,
-                        padding: "7px 14px",
-                        fontSize: 12.5,
-                        color: "#6b6b66",
-                        cursor: "pointer",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ fontSize: 11, color: "#cbcbc4", marginTop: 22, textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: "#cbcbc4", marginTop: 18, textAlign: "center" }}>
                   Decision-support only — a human reviews before use.
                 </div>
               </div>

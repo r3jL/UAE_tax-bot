@@ -1,21 +1,24 @@
 import type { Metadata } from "next";
-import { Source_Serif_4, IBM_Plex_Sans } from "next/font/google";
+import { Newsreader, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 
-// IBM Plex Sans — the UI typeface. Non-variable on Google Fonts, so weights
-// are listed explicitly. Exposed as --font-sans (the body default).
+// Newsreader — a literary, book-like serif. The website's primary typeface
+// (set as the body default in globals.css) for a warm, "reading a book" feel.
+// True italics included for emphasis. Exposed as --font-serif.
+const serif = Newsreader({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-serif",
+  display: "swap",
+});
+
+// IBM Plex Sans — kept as --font-sans for any element that wants a neutral UI
+// typeface, though the book serif is now the default everywhere.
 const sans = IBM_Plex_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
   variable: "--font-sans",
-  display: "swap",
-});
-
-// Source Serif 4 — used for questions, answers and headings, matching the comp.
-const serif = Source_Serif_4({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-serif",
   display: "swap",
 });
 
