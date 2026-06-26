@@ -1,7 +1,12 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { embed } from "ai";
-import { EMBEDDING_MODEL, RERANK_ENABLED, RERANK_CANDIDATES } from "../ai/models";
+import {
+  EMBEDDING_MODEL,
+  RERANK_ENABLED,
+  RERANK_CANDIDATES,
+  HYBRID_ENABLED,
+} from "../ai/models";
 import { rerank } from "./rerank";
 import { SEED_CORPUS, type SeedChunk } from "./seed";
 
@@ -150,8 +155,10 @@ export async function getRelevantChunks(
 
   let candidates: ContextChunk[];
   if (process.env.DATABASE_URL) {
-    const { retrieve } = await import("./retrieve");
-    const rows = await retrieve(question, { taxType: opts.taxType, topK: fetchK });
+    const { retrieve, retrieveHybrid } = await import("./retrieve");
+    const rows = HYBRID_ENABLED
+      ? await retrieveHybrid(question, { taxType: opts.taxType, topK: fetchK })
+      : await retrieve(question, { taxType: opts.taxType, topK: fetchK });
     candidates = rows.map((r) => ({
       id: r.id,
       content: r.content,

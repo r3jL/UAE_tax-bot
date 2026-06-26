@@ -263,6 +263,17 @@ export const RERANK_ENABLED = (process.env.RERANK_ENABLED ?? "true") !== "false"
 // How many candidates to over-retrieve before reranking down to topK.
 export const RERANK_CANDIDATES = Number(process.env.RERANK_CANDIDATES ?? 24);
 
+// Hybrid retrieval: fuse semantic (pgvector) + keyword (Postgres full-text
+// search) candidate lists with Reciprocal Rank Fusion. Catches exact tokens
+// that pure vector search misses — article numbers ("Article 18(2)"), defined
+// terms (QFZP, designated zone), decree-law numbers, TRNs. DB path only.
+// Enable with HYBRID_ENABLED=true (default off → unchanged vector-only path).
+export const HYBRID_ENABLED = (process.env.HYBRID_ENABLED ?? "false") !== "false";
+
+// RRF constant k — dampens the contribution of lower-ranked items. 60 is the
+// canonical value from the original RRF paper; rarely needs tuning.
+export const HYBRID_RRF_K = Number(process.env.HYBRID_RRF_K ?? 60);
+
 // Multimodal model for reading image/scanned invoices (OCR + field extraction).
 // Defaults to Groq's Llama-4 Scout — keeps everything on Groq (same key, fast,
 // no separate quota). Set VISION_PROVIDER=google + GOOGLE_API_KEY to use Gemini.
