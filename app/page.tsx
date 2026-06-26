@@ -7,7 +7,6 @@ import { Drawer } from "./_components/drawer";
 import { Markdown } from "./_components/markdown";
 import {
   CONF_MAP,
-  MONO,
   SERIF,
   filterToTaxType,
   resolveSample,
@@ -145,11 +144,9 @@ export default function Workspace() {
   const composerEl = (
     <Composer
       q={q}
-      filter={filter}
       loading={loading}
       files={files}
       onQ={setQ}
-      onFilter={setFilter}
       onFiles={setFiles}
       onKeyDown={onKeyDown}
       onAsk={ask}
@@ -338,10 +335,10 @@ function UserMessage({
           maxWidth: "80%",
           background: "#f3f2ee",
           borderRadius: "16px 16px 5px 16px",
-          padding: "11px 15px",
-          fontSize: 14,
-          lineHeight: 1.55,
-          fontFamily: MONO,
+          padding: "12px 16px",
+          fontSize: 15.5,
+          lineHeight: 1.5,
+          fontFamily: SERIF,
         }}
       >
         {text}
@@ -598,26 +595,23 @@ const FILE_ACCEPT = "image/*,application/pdf";
 
 function Composer({
   q,
-  filter,
   loading,
   files,
   onQ,
-  onFilter,
   onFiles,
   onKeyDown,
   onAsk,
 }: {
   q: string;
-  filter: TaxFilter;
   loading: boolean;
   files: File[];
   onQ: (v: string) => void;
-  onFilter: (v: TaxFilter) => void;
   onFiles: React.Dispatch<React.SetStateAction<File[]>>;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onAsk: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
   function addFiles(list: FileList | null) {
     if (!list) return;
@@ -632,6 +626,15 @@ function Composer({
     });
   }
 
+  // Auto-grow: stay a single rounded line, expand into a rounded rectangle as
+  // the text wraps onto more lines (capped, then scrolls).
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "0px";
+    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+  }, [q]);
+
   const canSend = !loading && q.trim().length > 0;
   const atFileLimit = files.length >= MAX_FILES;
 
@@ -641,10 +644,10 @@ function Composer({
         <div
           style={{
             border: "1px solid #e6e6e2",
-            borderRadius: 26,
+            borderRadius: 24,
             background: "#fff",
             boxShadow: "0 2px 22px rgba(0,0,0,0.07)",
-            padding: "10px 12px 9px",
+            padding: "6px 7px",
           }}
         >
           {files.length > 0 && (
@@ -706,30 +709,7 @@ function Composer({
             }}
           />
 
-          <textarea
-            value={q}
-            onChange={(e) => onQ(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Ask a UAE tax question…"
-            rows={1}
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              border: "none",
-              background: "none",
-              padding: "8px 8px 4px",
-              fontSize: 15.5,
-              lineHeight: 1.45,
-              color: "#1a1a1a",
-              resize: "none",
-              outline: "none",
-              fontFamily: MONO,
-              maxHeight: 168,
-            }}
-          />
-
-          {/* controls: + (attach) left · filter · send right */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
@@ -763,44 +743,29 @@ function Composer({
               </svg>
             </button>
 
-            <div style={{ position: "relative", flex: "none" }}>
-              <select
-                value={filter}
-                onChange={(e) => onFilter(e.target.value as TaxFilter)}
-                style={{
-                  appearance: "none",
-                  WebkitAppearance: "none",
-                  border: "1px solid #e0e0db",
-                  borderRadius: 17,
-                  background: "#fff",
-                  padding: "0 26px 0 12px",
-                  height: 34,
-                  fontSize: 12.5,
-                  color: "#5a564d",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                <option>All</option>
-                <option>Corporate Tax</option>
-                <option>VAT</option>
-              </select>
-              <span
-                style={{
-                  position: "absolute",
-                  right: 11,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                  color: "#a8a8a2",
-                  fontSize: 9,
-                }}
-              >
-                ▾
-              </span>
-            </div>
-
-            <div style={{ flex: 1 }} />
+            <textarea
+              ref={taRef}
+              value={q}
+              onChange={(e) => onQ(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Ask a UAE tax question…"
+              rows={1}
+              style={{
+                flex: 1,
+                boxSizing: "border-box",
+                border: "none",
+                background: "none",
+                padding: "7px 6px",
+                fontSize: 15.5,
+                lineHeight: 1.4,
+                color: "#1a1a1a",
+                resize: "none",
+                outline: "none",
+                fontFamily: SERIF,
+                maxHeight: 200,
+                overflowY: "auto",
+              }}
+            />
 
             <button
               onClick={onAsk}
