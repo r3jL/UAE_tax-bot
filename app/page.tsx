@@ -629,31 +629,36 @@ function Composer({
     });
   }
 
-  // Decide single-line vs layered by measuring the text at a FIXED width (the
-  // single-row text width) with an off-screen mirror. Because the width never
-  // changes, the decision can't flip-flop as the visible layout switches.
+  // Decide single-line vs layered AND size the visible textarea — both measured
+  // off-screen at the relevant fixed width via the mirror. Driving everything
+  // from the mirror (not the live, mid-switch textarea) means it can't flicker
+  // and it reliably collapses back to one line the moment the text fits again.
   useEffect(() => {
     const box = boxRef.current;
     const m = mirrorRef.current;
+    const ta = taRef.current;
     if (!box || !m) return;
-    const rowWidth = box.clientWidth - 14 - 80; // box padding + (+ , send) + gaps
-    m.style.width = `${Math.max(rowWidth, 40)}px`;
+    const rowWidth = Math.max(box.clientWidth - 14 - 80, 40); // single-row text width
+    const fullWidth = Math.max(box.clientWidth - 14, 40); // layered (full) text width
+
+    // one-line baseline + does the text need more than one line at row width?
+    m.style.width = `${rowWidth}px`;
     m.value = "x";
     m.style.height = "0px";
     const oneLine = m.scrollHeight;
     m.value = q || "x";
     m.style.height = "0px";
-    setMultiline(q.includes("\n") || m.scrollHeight > oneLine + 4);
-  }, [q]);
+    const layered = m.scrollHeight > oneLine + 4;
+    setMultiline(layered);
 
-  // Auto-grow the visible textarea to fit its content. Re-runs when the layout
-  // mode flips, since the available width — and so the height — changes.
-  useEffect(() => {
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.style.height = "0px";
-    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-  }, [q, multiline]);
+    // size the visible textarea at the width it will actually have
+    if (ta) {
+      m.style.width = `${layered ? fullWidth : rowWidth}px`;
+      m.value = q;
+      m.style.height = "0px";
+      ta.style.height = `${Math.min(Math.max(m.scrollHeight, oneLine), 200)}px`;
+    }
+  }, [q]);
 
   const canSend = !loading && q.trim().length > 0;
   const atFileLimit = files.length >= MAX_FILES;
