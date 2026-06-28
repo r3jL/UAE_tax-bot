@@ -182,6 +182,8 @@ export const INVOICE_FIELD_LABELS: { key: keyof InvoiceFieldsData; label: string
   { key: "total", label: "Total" },
 ];
 
+// Static fallback labels. The two rate-bearing labels (standard/zero) are made
+// live via treatmentLabel() below so the displayed % tracks tax_parameters.
 export const TREATMENT_LABELS: Record<Treatment, string> = {
   standard_5: "Standard-rated (5%)",
   zero_rated: "Zero-rated (0%)",
@@ -191,6 +193,21 @@ export const TREATMENT_LABELS: Record<Treatment, string> = {
   designated_zone: "Designated Zone",
   unknown: "Needs review",
 };
+
+// Label for a determination. For standard/zero-rated, show the LIVE computed
+// rate (which now comes from the versioned tax_parameters store) instead of a
+// hardcoded "5%". Falls back to the static label when no computation is present.
+export function treatmentLabel(
+  treatment: Treatment,
+  computation?: VatComputationData,
+): string {
+  const rate = computation?.expectedRate;
+  if (rate != null && (treatment === "standard_5" || treatment === "zero_rated")) {
+    const base = treatment === "standard_5" ? "Standard-rated" : "Zero-rated";
+    return `${base} (${+(rate * 100).toFixed(2)}%)`;
+  }
+  return TREATMENT_LABELS[treatment];
+}
 
 export const RECOVERABLE_LABELS: Record<Determination["inputVatRecoverable"], string> = {
   yes: "Input VAT recoverable",

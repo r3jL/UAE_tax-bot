@@ -21,8 +21,12 @@ export interface VatComputation {
   notes: string[];
 }
 
-// VAT rate implied by each treatment (what the SUPPLIER should charge).
-const RATE_BY_TREATMENT: Record<string, number | null> = {
+// VAT rate implied by each treatment (what the SUPPLIER should charge). These
+// are FALLBACK defaults — when a live rate table is passed via opts.rates (from
+// the versioned tax_parameters store), it is merged over these so a rate change
+// is a data edit, not a code change. Only the numeric rates (standard_5) are
+// data-driven; the structural zeros/nulls below stay in code.
+const DEFAULT_RATE_BY_TREATMENT: Record<string, number | null> = {
   standard_5: 0.05,
   zero_rated: 0,
   exempt: 0,
@@ -63,8 +67,17 @@ function detectCurrency(fields: InvoiceFields): string {
 export function computeInvoiceVat(
   fields: InvoiceFields,
   det: Pick<DeterminationContract, "treatment" | "inputVatRecoverable">,
-  opts: { recoveryRatio?: number } = {},
+  opts: {
+    recoveryRatio?: number;
+    // Live rate overrides (treatment → rate), merged over the defaults above.
+    rates?: Record<string, number | null>;
+    // Reverse-charge self-account rate; defaults to the standard rate.
+    selfAccountRate?: number;
+  } = {},
 ): VatComputation {
+  // Merge any live (data-driven) rates over the built-in defaults so missing
+  // keys transparently fall back — the function stays pure and synchronous.
+  const rateTable = { ...DEFAULT_RATE_BY_TREATMENT, ...(opts.rates ?? {}) };
   const currency = detectCurrency(fields);
   const vatCharged = parseAmount(fields.vatAmount);
   const total = parseAmount(fields.total);
@@ -76,7 +89,7 @@ export function computeInvoiceVat(
     notes.push("Net derived from total − VAT.");
   }
 
-  const expectedRate = RATE_BY_TREATMENT[det.treatment] ?? null;
+  const expectedRate = rateTable[det.treatment] ?? null;
   const expectedVat = expectedRate != null && net != null ? round2(net * expectedRate) : null;
 
   // Compare what the supplier charged against what the rule expects.
@@ -120,9 +133,13 @@ export function computeInvoiceVat(
     }
   }
 
-  // Reverse charge: the recipient self-accounts output VAT at 5% on the net.
+  // Reverse charge: the recipient self-accounts output VAT at the standard rate
+  // on the net (the same rate the supplier would have charged — data-driven).
+  const selfAccountRate = opts.selfAccountRate ?? opts.rates?.standard_5 ?? 0.05;
   const selfAccountedVat =
-    det.treatment === "reverse_charge" && net != null ? round2(net * 0.05) : null;
+    det.treatment === "reverse_charge" && net != null
+      ? round2(net * selfAccountRate)
+      : null;
 
   // Recoverable input VAT (reverse charge recovers the self-accounted amount).
   const baseVat = det.treatment === "reverse_charge" ? selfAccountedVat : vatCharged;

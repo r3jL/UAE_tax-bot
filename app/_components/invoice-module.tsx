@@ -8,7 +8,7 @@ import {
   RECOVERABLE_LABELS,
   SAMPLE_INVOICE,
   SERIF,
-  TREATMENT_LABELS,
+  treatmentLabel,
   type Determination,
   type InvoiceFieldsData,
   type SupplyType,
@@ -497,7 +497,7 @@ export function InvoiceModule() {
                   </span>
                   {r.status === "done" && r.det ? (
                     <>
-                      <span style={{ color: "#33312c" }}>{TREATMENT_LABELS[r.det.treatment]}</span>
+                      <span style={{ color: "#33312c" }}>{treatmentLabel(r.det.treatment, r.det.computation)}</span>
                       <span
                         style={{
                           color: c ? mismatchColor(c.mismatch.status) : "#9a9a93",
@@ -750,7 +750,7 @@ export function InvoiceModule() {
                     marginBottom: 4,
                   }}
                 >
-                  {TREATMENT_LABELS[det.treatment]}
+                  {treatmentLabel(det.treatment, det.computation)}
                 </span>
                 <div style={{ fontSize: 13, fontWeight: 500, color: "#5a564d", marginTop: 8 }}>
                   {RECOVERABLE_LABELS[det.inputVatRecoverable]}

@@ -146,7 +146,12 @@ async function rankLocalIndex(
 // local embedded index (the ingested FTA PDFs) > hand-written seed corpus.
 export async function getRelevantChunks(
   question: string,
-  opts: { taxType?: "CT" | "VAT"; topK?: number } = {},
+  opts: {
+    taxType?: "CT" | "VAT";
+    topK?: number;
+    asOf?: Date;
+    includeSuperseded?: boolean;
+  } = {},
 ): Promise<ContextChunk[]> {
   const topK = opts.topK ?? 8;
   // Over-retrieve a wider candidate set, then let the reranker pick the best
@@ -156,16 +161,26 @@ export async function getRelevantChunks(
   let candidates: ContextChunk[];
   if (process.env.DATABASE_URL) {
     const { retrieve, retrieveHybrid } = await import("./retrieve");
+    const ropts = {
+      taxType: opts.taxType,
+      topK: fetchK,
+      asOf: opts.asOf,
+      includeSuperseded: opts.includeSuperseded,
+    };
     const rows = HYBRID_ENABLED
-      ? await retrieveHybrid(question, { taxType: opts.taxType, topK: fetchK })
-      : await retrieve(question, { taxType: opts.taxType, topK: fetchK });
+      ? await retrieveHybrid(question, ropts)
+      : await retrieve(question, ropts);
     candidates = rows.map((r) => ({
       id: r.id,
       content: r.content,
       articleRef: r.articleRef,
       sourceUrl: r.sourceUrl,
-      effectiveDate: null,
-      instrument: null,
+      // Carry the real effective date (ISO yyyy-mm-dd) and instrument through to
+      // the answer prompt — strengthens temporal grounding, no prompt change.
+      effectiveDate: r.effectiveDate
+        ? r.effectiveDate.toISOString().slice(0, 10)
+        : null,
+      instrument: r.instrument,
       docTitle: r.docTitle,
     }));
   } else {

@@ -4,6 +4,10 @@
 // UAE rules but NOT verbatim law. Replace with officially ingested text
 // (npm run ingest) before any real filing decision. Each carries a reference
 // and source URL so answers stay traceable.
+//
+// NOTE: rates/thresholds quoted in this prose are illustrative only. The
+// authoritative, computed values live in the versioned `tax_parameters` table
+// (see lib/tax/parameters.ts) — change a rate there, not here.
 
 export type Category =
   | "VAT"

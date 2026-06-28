@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Passcode gate. Everything is protected except the login page and the auth
-// endpoint. The cookie holds AUTH_TOKEN (a server secret), set only after the
-// passcode is verified server-side — so it can't be forged.
-const PUBLIC = ["/login", "/api/auth"];
+// Passcode gate. Everything is protected except the login page, the auth
+// endpoint, and the cron endpoints (which authenticate themselves with a Bearer
+// CRON_SECRET — Vercel Cron never carries the lex_auth cookie). The cookie holds
+// AUTH_TOKEN (a server secret), set only after the passcode is verified
+// server-side — so it can't be forged.
+const PUBLIC = ["/login", "/api/auth", "/api/cron"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

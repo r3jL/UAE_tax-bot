@@ -3,6 +3,7 @@ import { REASONING_MODEL } from "./models";
 import { determinationContract, type DeterminationContract, type InvoiceFields } from "./contracts";
 import { getRelevantChunks } from "../rag/context";
 import { computeInvoiceVat, type VatComputation } from "../tax/compute";
+import { loadParameters, buildRateTable, getNumber, parseAsOf } from "../tax/parameters";
 import { db } from "../db";
 import { queryLog } from "../db/schema";
 
@@ -111,7 +112,14 @@ export async function determineVat(
 
   // Deterministic numbers: the model chose the treatment above; the arithmetic
   // (expected VAT, charged-vs-expected mismatch, recoverable amount) is code.
-  const computation = computeInvoiceVat(fields, result);
+  // Rates come from the versioned tax_parameters store, as of the invoice/supply
+  // date where parseable — so a rate change is a data edit, not a redeploy.
+  const params = await loadParameters();
+  const asOf = parseAsOf(fields.invoiceDate) ?? new Date();
+  const computation = computeInvoiceVat(fields, result, {
+    rates: buildRateTable(params, asOf),
+    selfAccountRate: getNumber(params, "vat.standard_rate", asOf) ?? undefined,
+  });
 
   const retrievedChunkIds = chunks.map((c) => c.id);
 

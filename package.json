@@ -11,7 +11,9 @@
     "db:reset": "tsx scripts/db-reset.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate-additive": "tsx scripts/db-migrate-additive.ts",
     "db:push": "drizzle-kit push",
+    "db:seed-params": "tsx scripts/seed-parameters.ts",
     "ingest": "tsx scripts/ingest.ts",
     "eval": "tsx scripts/eval.ts"
   },

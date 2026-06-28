@@ -1,0 +1,103 @@
+{
+  "//": "Per-document metadata overrides, keyed by corpus-relative path (case-sensitive). Any file not listed falls back to metadata derived from its folder + filename. `effectiveDate` (ISO) populates documents.effectiveDate AND every law_chunks.effectiveDate for that doc — this is what makes temporally-correct retrieval work. Set `watch: true` + a VERIFIED direct `sourceUrl` to have the weekly cron re-fetch and diff that document. Leave watch:false until you've confirmed the exact PDF URL, or the detector will cry wolf on unrelated page changes.",
+
+  "ct-legislation/Federal-Decree-Law-47-2022-Corporate-Tax.pdf": {
+    "title": "Federal Decree-Law No. 47 of 2022 — Corporate Tax",
+    "version": "47-2022",
+    "instrument": "decree_law",
+    "taxType": "CT",
+    "effectiveDate": "2023-06-01",
+    "sourceUrl": "https://tax.gov.ae/en/taxes/corporate.tax.aspx",
+    "watch": false
+  },
+  "ct-legislation/Cabinet-Decision-100-2023-QFZP-Qualifying-Income.pdf": {
+    "title": "Cabinet Decision No. 100 of 2023 — Qualifying Income (QFZP)",
+    "version": "100-2023",
+    "instrument": "cabinet_decision",
+    "taxType": "CT",
+    "effectiveDate": "2023-06-01",
+    "sourceUrl": "https://tax.gov.ae/en/taxes/corporate.tax.aspx",
+    "watch": false
+  },
+  "ct-legislation/Ministerial-Decision-265-2023-Qualifying-Activities.pdf": {
+    "title": "Ministerial Decision No. 265 of 2023 — Qualifying Activities",
+    "version": "265-2023",
+    "instrument": "ministerial_decision",
+    "taxType": "CT",
+    "effectiveDate": "2023-06-01",
+    "sourceUrl": "https://tax.gov.ae/en/taxes/corporate.tax.aspx",
+    "watch": false
+  },
+  "fta-legislation/Federal-Decree-Law-8-2017-VAT.pdf": {
+    "title": "Federal Decree-Law No. 8 of 2017 — Value Added Tax",
+    "version": "8-2017",
+    "instrument": "decree_law",
+    "taxType": "VAT",
+    "effectiveDate": "2018-01-01",
+    "sourceUrl": "https://tax.gov.ae/en/taxes/vat.aspx",
+    "watch": false
+  },
+  "fta-legislation/VAT-Executive-Regulations-CD52-2017-amended.pdf": {
+    "title": "VAT Executive Regulations — Cabinet Decision No. 52 of 2017 (amended)",
+    "version": "52-2017-amended",
+    "instrument": "cabinet_decision",
+    "taxType": "VAT",
+    "effectiveDate": "2018-01-01",
+    "sourceUrl": "https://tax.gov.ae/en/taxes/vat.aspx",
+    "watch": false
+  },
+  "fta-legislation/Federal-Decree-Law-28-2022-Tax-Procedures.pdf": {
+    "title": "Federal Decree-Law No. 28 of 2022 — Tax Procedures",
+    "version": "28-2022",
+    "instrument": "decree_law",
+    "taxType": "GEN",
+    "effectiveDate": "2023-03-01",
+    "sourceUrl": "https://tax.gov.ae/en/legislation.aspx",
+    "watch": false
+  },
+  "fta-legislation/Cabinet-Decision-74-2023-Tax-Procedures-Exec-Reg.pdf": {
+    "title": "Cabinet Decision No. 74 of 2023 — Tax Procedures Executive Regulations",
+    "version": "74-2023",
+    "instrument": "cabinet_decision",
+    "taxType": "GEN",
+    "effectiveDate": "2023-08-01",
+    "sourceUrl": "https://tax.gov.ae/en/legislation.aspx",
+    "watch": false
+  },
+  "fta-legislation/Cabinet-Decision-49-2023-Administrative-Penalties.pdf": {
+    "title": "Cabinet Decision No. 49 of 2023 — Administrative Penalties",
+    "version": "49-2023",
+    "instrument": "cabinet_decision",
+    "taxType": "GEN",
+    "effectiveDate": "2023-08-01",
+    "sourceUrl": "https://tax.gov.ae/en/legislation.aspx",
+    "watch": false
+  },
+  "fta-legislation/Cabinet-Decision-56-2023-NonResident-Nexus.pdf": {
+    "title": "Cabinet Decision No. 56 of 2023 — Non-Resident Nexus",
+    "version": "56-2023",
+    "instrument": "cabinet_decision",
+    "taxType": "CT",
+    "effectiveDate": "2023-06-01",
+    "sourceUrl": "https://tax.gov.ae/en/taxes/corporate.tax.aspx",
+    "watch": false
+  },
+  "fta-legislation/Cabinet-Decision-81-2023-Qualifying-Investment-Funds.pdf": {
+    "title": "Cabinet Decision No. 81 of 2023 — Qualifying Investment Funds",
+    "version": "81-2023",
+    "instrument": "cabinet_decision",
+    "taxType": "CT",
+    "effectiveDate": "2023-06-01",
+    "sourceUrl": "https://tax.gov.ae/en/taxes/corporate.tax.aspx",
+    "watch": false
+  },
+  "public-clarifications/VATP030-Amendments-VAT-Decree-Law.pdf": {
+    "title": "VATP030 — Amendments to the VAT Decree-Law",
+    "version": "VATP030",
+    "instrument": "public_clarification",
+    "taxType": "VAT",
+    "effectiveDate": "2023-01-01",
+    "sourceUrl": "https://tax.gov.ae/en/taxes/vat.aspx",
+    "watch": false
+  }
+}

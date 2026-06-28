@@ -32,12 +32,34 @@ With a database (`DATABASE_URL` set → Neon + pgvector — the current setup):
 ```bash
 npm run db:setup              # enable pgvector (first time only)
 npm run db:push -- --force    # create tables at the configured embedding size
-npm run ingest                # corpus PDFs → chunks → embeddings → DB
+npm run db:migrate-additive   # add versioning/supersession cols + law_changes + tax_parameters
+npm run db:seed-params        # seed the versioned tax_parameters (rates/thresholds)
+npm run ingest                # corpus PDFs → chunks → embeddings → DB (incremental)
 npm run dev                   # http://localhost:3000
 ```
 
 No database? Leave `DATABASE_URL` unset and just `npm run ingest && npm run dev`
 — it embeds to `lib/rag/corpus-index.json` instead (one less moving part).
+
+### Updating the corpus when a law changes
+
+Ingestion is **incremental and idempotent** — drop the updated official file into
+`corpus/` (and set its `effectiveDate`/`version` in `corpus/manifest.json`) and run:
+
+```bash
+npm run db:migrate-additive   # no-op if already applied
+npm run ingest                # diffs by content hash: re-embeds only changed chunks
+```
+
+Re-running on an unchanged corpus does nothing. Changed chunks are inserted fresh
+and the old ones are marked `superseded` (kept for audit/history, excluded from
+retrieval). Every diff is recorded in `law_changes`. You no longer need the
+destructive `db:reset` for routine updates — keep it only for an embedding-dimension
+change (the one case the pgvector column must be recreated).
+
+To change a **rate/threshold** (e.g. VAT 5% → 7%), don't edit code: insert a new
+effective-dated row in `tax_parameters` and set `superseded_at` on the old one. The
+new value is picked up within one cache TTL (`TAX_PARAM_TTL_MS`, default 5 min).
 
 ---
 
@@ -102,6 +124,8 @@ rebuild the index:
 ```bash
 npm run db:reset              # drop documents + law_chunks
 npm run db:push -- --force    # recreate at the new dimension
+npm run db:migrate-additive   # re-add versioning cols + law_changes + tax_parameters
+npm run db:seed-params        # re-seed tax_parameters
 npm run ingest                # re-embed the corpus
 ```
 

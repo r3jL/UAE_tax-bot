@@ -1,5 +1,5 @@
 import { embed } from "ai";
-import { cosineDistance, sql, desc, eq, and } from "drizzle-orm";
+import { cosineDistance, sql, desc, eq, and, or, lte, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { lawChunks, documents } from "../db/schema";
 import { EMBEDDING_MODEL, HYBRID_RRF_K } from "../ai/models";
@@ -11,7 +11,33 @@ export interface RetrievedChunk {
   documentId: number;
   docTitle: string | null;
   sourceUrl: string | null;
+  effectiveDate: Date | null;
+  instrument: string | null;
   similarity: number;
+}
+
+// Shared retrieval options. By default we return only law that is CURRENTLY in
+// force: status='active' (not superseded/repealed) AND effective on/before now.
+// `asOf` answers historical questions ("what did the law say on date X"); chunks
+// with a null effectiveDate stay visible (graceful during metadata backfill).
+export interface RetrieveOpts {
+  taxType?: "CT" | "VAT";
+  topK?: number;
+  asOf?: Date;
+  includeSuperseded?: boolean;
+  jurisdiction?: string;
+}
+
+// The WHERE that enforces tax-type + lifecycle + temporal correctness. Used by
+// BOTH the semantic and the lexical leg so they never disagree.
+function activeFilter(opts: RetrieveOpts) {
+  const clauses = [];
+  if (opts.taxType) clauses.push(eq(lawChunks.taxType, opts.taxType));
+  if (!opts.includeSuperseded) clauses.push(eq(lawChunks.status, "active"));
+  const asOf = opts.asOf ?? new Date();
+  clauses.push(or(isNull(lawChunks.effectiveDate), lte(lawChunks.effectiveDate, asOf)));
+  if (opts.jurisdiction) clauses.push(eq(lawChunks.jurisdiction, opts.jurisdiction));
+  return and(...clauses);
 }
 
 // Embed the query and pull the most similar law chunks (cosine similarity),
@@ -19,7 +45,7 @@ export interface RetrievedChunk {
 // answer engine can verify citations against what was actually retrieved.
 export async function retrieve(
   question: string,
-  opts: { taxType?: "CT" | "VAT"; topK?: number } = {},
+  opts: RetrieveOpts = {},
 ): Promise<RetrievedChunk[]> {
   const { embedding } = await embed({ model: EMBEDDING_MODEL, value: question });
 
@@ -33,11 +59,13 @@ export async function retrieve(
       documentId: lawChunks.documentId,
       docTitle: documents.title,
       sourceUrl: documents.sourceUrl,
+      effectiveDate: lawChunks.effectiveDate,
+      instrument: documents.instrument,
       similarity,
     })
     .from(lawChunks)
     .leftJoin(documents, eq(lawChunks.documentId, documents.id))
-    .where(opts.taxType ? eq(lawChunks.taxType, opts.taxType) : undefined)
+    .where(activeFilter(opts))
     .orderBy(desc(similarity))
     .limit(opts.topK ?? 8);
 
@@ -56,11 +84,11 @@ export async function retrieve(
 // GIN index later if the corpus grows.
 export async function retrieveHybrid(
   question: string,
-  opts: { taxType?: "CT" | "VAT"; topK?: number } = {},
+  opts: RetrieveOpts = {},
 ): Promise<RetrievedChunk[]> {
   const topK = opts.topK ?? 8;
   const pool = Math.max(topK * 2, 30); // candidates pulled from each method
-  const taxFilter = opts.taxType ? eq(lawChunks.taxType, opts.taxType) : undefined;
+  const baseFilter = activeFilter(opts);
 
   const fields = {
     id: lawChunks.id,
@@ -69,6 +97,8 @@ export async function retrieveHybrid(
     documentId: lawChunks.documentId,
     docTitle: documents.title,
     sourceUrl: documents.sourceUrl,
+    effectiveDate: lawChunks.effectiveDate,
+    instrument: documents.instrument,
   };
 
   // 1. Semantic candidates (pgvector cosine).
@@ -78,7 +108,7 @@ export async function retrieveHybrid(
     .select({ ...fields, similarity })
     .from(lawChunks)
     .leftJoin(documents, eq(lawChunks.documentId, documents.id))
-    .where(taxFilter)
+    .where(baseFilter)
     .orderBy(desc(similarity))
     .limit(pool);
 
@@ -91,7 +121,7 @@ export async function retrieveHybrid(
     .select({ ...fields, similarity: sql<number>`0` })
     .from(lawChunks)
     .leftJoin(documents, eq(lawChunks.documentId, documents.id))
-    .where(and(taxFilter, sql`${tsv} @@ ${tsq}`))
+    .where(and(baseFilter, sql`${tsv} @@ ${tsq}`))
     .orderBy(desc(rank))
     .limit(pool);
 
