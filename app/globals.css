@@ -112,3 +112,14 @@ select:focus {
 .lex-xscroll::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Scrollable but with no visible scrollbar (used for the composer textarea). */
+.lex-noscroll {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge/IE */
+}
+.lex-noscroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* WebKit */
+}

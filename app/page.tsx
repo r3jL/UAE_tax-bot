@@ -802,6 +802,7 @@ function Composer({
 
             <textarea
               ref={taRef}
+              className="lex-noscroll"
               value={q}
               onChange={(e) => onQ(e.target.value)}
               onKeyDown={onKeyDown}
