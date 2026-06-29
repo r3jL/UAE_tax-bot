@@ -17,7 +17,7 @@ How the system is built and how every part functions. Stack is **Vercel-native**
 | **Database + vectors** | **Neon Postgres + pgvector** (Vercel Marketplace) | *One* store for both relational compliance data **and** vector search |
 | **ORM** | Drizzle | Type-safe schema + migrations |
 | **File storage** | Vercel Blob (private) | Holds uploaded invoices, generated PDFs/Excel |
-| **Auth** | Clerk (Vercel Marketplace) | SSO/roles for internal staff |
+| **Auth** | Passcode gate today (cookie + server `AUTH_TOKEN`, `proxy.ts`); Clerk/SSO planned | Internal-staff access control |
 | **Background jobs** | Vercel Cron + Functions | Reminders, nightly source crawls |
 | **Durable multi-step** | Vercel Workflow (WDK) | Change-impact re-runs that must survive crashes/retries |
 | **Email reminders** | Resend | 30/15/7/1-day deadline alerts (SMS/WhatsApp later via Twilio) |
@@ -73,11 +73,11 @@ How the system is built and how every part functions. Stack is **Vercel-native**
 3. **Chunk** by article/section so a citation maps to a real legal unit.
 4. **Embed** each chunk → vector.
 5. **Store** in `law_chunks` with metadata: `source_url`, `article_ref`, `effective_date`, `jurisdiction`, `tax_type`, `version`, `content_hash`.
-6. **Diff** against last crawl by `content_hash` → new/changed chunks feed the **Change-Impact Engine** (Phase 3).
+6. **Diff** against the stored corpus by `content_hash` — **now built**. Ingestion is incremental and idempotent: unchanged chunks are skipped, changed chunks are re-embedded and the old ones marked `superseded` (kept for audit, hidden from retrieval), and every add/modify/remove is recorded in `law_changes`. Re-running on an unchanged corpus is a no-op. Metadata (`effective_date`, `version`) is set from `corpus/manifest.json`.
 
 ### 3b. Query (every question)
 1. User question (+ jurisdiction/tax-type filter) → **embed**.
-2. **Retrieve** top-k chunks from pgvector, filtered to the right jurisdiction & current `effective_date`.
+2. **Retrieve** top-k chunks from pgvector, filtered to `status='active'` and `effective_date <= now` — so superseded/repealed or not-yet-in-force law is excluded (enforced in `lib/rag/retrieve.ts`; an `asOf`/`includeSuperseded` path supports historical/audit queries).
 3. **Generate** with Claude under a strict contract:
    - *Answer only from the provided context.*
    - *Attach a citation (article_ref + date + url) to every claim.*
@@ -138,13 +138,16 @@ For "is there VAT on this, and what do I do?" — a hybrid of **deterministic ru
 
 ---
 
-## 7. Change-Impact Engine (Phase 3)
-- Nightly ingestion diff surfaces amended/new law (Section 3a).
-- A **Vercel Workflow** (durable, retry-safe) then:
-  1. Identifies `compliance_items`, cached answers, and reports that cited the old rule.
-  2. Flags them for **human re-review** (never silently auto-edits).
-  3. Notifies F&A of what changed and what it affects.
-- Durable execution matters here: a re-run touching many records must survive timeouts/retries without double-processing.
+## 7. Change-Impact Engine (Phase 3 — foundation built)
+
+**Built today:**
+- **Versioned, temporally-correct corpus.** Incremental, idempotent ingestion (Section 3a): a changed provision's old chunk is marked `superseded` (never deleted), the new one becomes `active`, and retrieval returns only law in force — so **Lex never cites repealed law**.
+- **Change audit (`law_changes`).** Every added/modified/removed chunk is recorded with old/new `content_hash`, article ref, and `source` (`ingest` | `cron`).
+- **Scheduled detection (Law Monitor).** A weekly **Vercel Cron** (`/api/cron/detect-changes`) re-fetches the curated `watch` sources in `corpus/manifest.json`, diffs them by extracted-text hash, and flags changes into `law_changes` + `audit_log`. It is **flag-only** — a human reviews and re-ingests; the corpus is never auto-mutated.
+- **Rates/thresholds as data (`tax_parameters`).** Versioned, effective-dated values; changing a rate (e.g. VAT 5%→7%) is a data edit, not a redeploy.
+
+**Still to build (next iteration):**
+- A **Vercel Workflow** (durable, retry-safe) that, on a detected change, identifies the `compliance_items`, cached answers (`query_log`), and reports that cited the old rule and flags them for **human re-review** (never silently auto-edits). The citation→chunk links this needs already exist in `query_log`. Durable execution matters here: a re-run touching many records must survive timeouts/retries without double-processing.
 
 ---
 
@@ -152,14 +155,15 @@ For "is there VAT on this, and what do I do?" — a hybrid of **deterministic ru
 
 | Table | Purpose |
 |-------|---------|
-| `documents` | Source docs: url, authority, jurisdiction, fetched_at, version |
-| `law_chunks` | Chunk text + `embedding vector` + article_ref, effective_date, content_hash |
-| `compliance_items` | The register: entity, jurisdiction, type, due_date, frequency, authority, status |
-| `invoices` | Blob ref + extracted fields + determination result |
-| `query_log` | Every Q&A: question, retrieved chunk ids, answer, confidence, user |
-| `law_changes` | Detected amendments + impacted items (Change-Impact) |
-| `users` / `roles` | Staff, role (F&A reviewer vs. general staff), permissions |
+| `documents` | Source docs: url, authority, jurisdiction, fetched_at, version, **status, content_hash, source_path** |
+| `law_chunks` | Chunk text + `embedding vector` + article_ref, effective_date, content_hash, **status (active/superseded/repealed), superseded_by** |
+| `law_changes` | **Built** — audit of every corpus diff: change_type, old/new content_hash, article_ref, source (ingest\|cron) |
+| `tax_parameters` | **Built** — versioned, effective-dated rates/thresholds/dates (param_key, value, unit, effective_date, superseded_at) |
+| `query_log` | Every Q&A / determination: question, retrieved chunk ids, citations, answer, confidence |
 | `audit_log` | Who saw/approved/sent what, when — the trust backbone |
+| `compliance_items` | *(planned, Phase 2)* the register: entity, jurisdiction, type, due_date, frequency, authority, status |
+| `invoices` | *(planned, Phase 1.5)* Blob ref + extracted fields + determination result |
+| `users` / `roles` | *(planned)* Staff, role (F&A reviewer vs. general staff), permissions |
 
 `pgvector` lives on `law_chunks.embedding`; everything else is ordinary relational data in the **same** database — one store, simpler ops.
 
@@ -181,7 +185,8 @@ For "is there VAT on this, and what do I do?" — a hybrid of **deterministic ru
 | Chat UI + Cited Q&A + Determination engine | Phase 1 |
 | Invoice upload + vision extraction | Phase 1.5 |
 | Register + dashboard + cron reminders + exports | Phase 2 |
-| Change-Impact workflow | Phase 3 |
+| Versioned corpus + temporal retrieval + `tax_parameters` + change-detection cron | Phase 3 (built) |
+| Impact-flagging workflow (past answers / register entries) | Phase 3 (planned) |
 | Draft return preparation + reporting | Phase 4 |
 
 ---

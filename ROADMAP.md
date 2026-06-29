@@ -24,7 +24,7 @@ Internal · MD's Office / F&A · Status: Proposed for review
 | **1** | Cited VAT/Tax Q&A + Vendor Determination | UAE | Medium | Deflects routine queries from F&A |
 | **1.5** | Invoice upload & extraction | UAE | Medium | The "wow" demo; AP/procurement self-serve |
 | **2** | Compliance Register + Deadline Tracker | UAE | **Low** | Highest-value, zero hallucination |
-| **3** | Change-Impact Engine | UAE | High | Keeps everything current automatically |
+| **3** | Change-Impact Engine *(foundation built)* | UAE | High | Keeps everything current automatically |
 | **4** | Return Preparation (draft only) + Reporting | UAE | High | Biggest time-saver, tightest guardrails |
 
 ---
@@ -92,12 +92,16 @@ Internal · MD's Office / F&A · Status: Proposed for review
 
 ---
 
-## Phase 3 — Change-Impact Engine
+## Phase 3 — Change-Impact Engine  *(foundation built)*
 **Goal:** when a UAE law changes, the system detects it and re-runs every answer/report that relied on the old rule.
 
-**Features**
-- **Law Monitor** watching the FTA for amendments/new circulars
-- On change: flag affected register entries, cached answers, and reports for re-review
+**Built (foundation)**
+- **Versioned corpus + temporal correctness** — ingestion is incremental and idempotent; a changed provision's old chunk is `superseded` (kept for audit) and retrieval returns only law currently in force, so answers never cite repealed law.
+- **Law Monitor (scheduled detection)** — a weekly Vercel Cron re-fetches curated FTA sources, diffs them by content hash, and flags changes into a `law_changes` audit table (flag-only; a human reviews and re-ingests).
+- **Rates/thresholds as versioned data** (`tax_parameters`) — changing a rate (e.g. VAT 5% → 7%) is a data edit, not a redeploy.
+
+**Still to build**
+- On a detected change, **automatically flag** the affected register entries, cached answers, and reports for human re-review (a durable Vercel Workflow; the citation→chunk links already exist in `query_log`).
 
 **Success:** a real amendment is detected and the affected items are flagged automatically.
 **Maps to:** Project Lex "Change-Impact Engine".

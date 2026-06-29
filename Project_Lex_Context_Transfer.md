@@ -70,9 +70,9 @@ These are settled design decisions. Do not weaken or re-open them without an exp
 | Embeddings | `openai/text-embedding-3-small`, **1536 dims** (`EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`) |
 | DB + vectors | **Neon Postgres + pgvector**, single store |
 | ORM | **Drizzle** |
-| Auth | **Clerk** (planned — NOT yet wired) |
+| Auth | **Passcode gate** (built — `proxy.ts` + cookie/`AUTH_TOKEN`); Clerk/SSO planned |
 | File storage | **Vercel Blob** (planned — invoices) |
-| Background jobs | **Vercel Cron + Workflow** (planned — reminders, change monitor) |
+| Background jobs | **Vercel Cron** (built — weekly law-change detector); Workflow + reminders planned |
 | Email | **Resend** (planned — deadline reminders) |
 | PDF parse | `unpdf` |
 
@@ -108,7 +108,11 @@ lib/
     seed/               # hand-written MVP corpus (vat, corporate-tax, real-estate,
                         #   compliance, legal-framework) — accurate UAE paraphrases
   db/
-    schema.ts           # documents, law_chunks(+vector hnsw), query_log, audit_log
+    schema.ts           # documents, law_chunks(+hnsw, +status/superseded),
+                        #   law_changes, tax_parameters, query_log, audit_log
+  tax/
+    compute.ts          # deterministic VAT arithmetic (rates injected from tax_parameters)
+    parameters.ts       # cached, effective-dated tax_parameters accessor
     index.ts            # drizzle + neon client (boots with placeholder URL pre-provision)
     setup.sql           # CREATE EXTENSION vector
 scripts/
@@ -122,27 +126,34 @@ ARCHITECTURE.md  ROADMAP.md  README.md  AGENTS.md
 
 ## 6. Current state — built vs. scaffolded
 
-**Built and wired end-to-end (Phase 0 + the Q&A half of Phase 1):**
-- Cited Q&A: chat UI → `/api/chat` → `answerQuestion()` → 3-tier retrieval → `generateObject`
+**Built and wired end-to-end:**
+- **Cited Q&A** (Phase 1): chat UI → `/api/chat` → `answerQuestion()` → retrieval → `generateObject`
   against `answerContract` → **structural citation guard** (drops citations whose `chunkId`
   wasn't retrieved; forces `escalate` if an "answered" response has none) → `query_log` audit.
-- 3-tier retrieval: Neon pgvector → local `corpus-index.json` → lexical seed (so it runs with
-  one key and no database).
-- Article-aware chunking + ingestion pipeline (DB mode or local-index mode).
-- UAE seed corpus (~40+ accurate paraphrased chunks: VAT, CT, real-estate, compliance, legal).
-- `taxType` (CT/VAT) filter through UI and retrieval.
-- `audit_log` + `query_log` tables.
+- **Retrieval**: Neon pgvector with **hybrid** semantic + Postgres full-text (RRF), optional reranker;
+  falls back to local `corpus-index.json` → lexical seed (runs with one key, no DB). Now filtered to
+  **`status='active'` + `effective_date <= now`** so superseded/repealed law is never cited.
+- **Vendor VAT determination** (Phase 1): `lib/ai/determine.ts` — RAG-grounded treatment +
+  recoverability, **deterministic VAT arithmetic** in `lib/tax/compute.ts`, cited, logged.
+- **Invoice upload + extraction** (Phase 1.5): `app/api/invoice/*` (extract / determine / process) +
+  `lib/ai/extract-invoice.ts` → determination engine → cited result.
+- **Incremental, versioned ingestion** (Phase 3 foundation): idempotent, hash-diffing; supersedes
+  changed chunks (kept for audit), records `law_changes`; metadata from `corpus/manifest.json`.
+- **Scheduled change detection**: weekly Vercel Cron `/api/cron/detect-changes` (flag-only).
+- **Rates/thresholds as versioned data**: `tax_parameters` + cached accessor (`lib/tax/parameters.ts`)
+  — a rate change is a data edit, not a redeploy.
+- **Auth**: passcode gate (`proxy.ts` + `/api/auth` + `/login`); every route protected by a cookie
+  holding a server `AUTH_TOKEN`.
+- **Eval harness**: `scripts/eval.ts` (`npm run eval`).
+- Article-aware chunking; UAE seed corpus + ingested FTA corpus; `taxType` (CT/VAT) filter;
+  `query_log` + `audit_log` tables.
 
 **Specced/contracted but NOT built yet:**
-- **Determination engine** (Phase 1): `determinationContract` exists in `contracts.ts`, but there is
-  no `lib/determination/` engine or route.
-- **Invoice upload + Claude-vision extraction** (Phase 1.5).
 - **Compliance register + tracker + reminders** (Phase 2): no `compliance_items` table yet.
-- **Change-impact engine** (Phase 3): no `law_changes` table yet.
-- **Auth** (Clerk): not wired; `/api/chat` is currently open.
-- `users` / `roles` table: not present.
-- **Eval harness**: not present.
-- Return prep / reporting (Phase 4).
+- **Change-impact — impact flagging** (Phase 3, remaining half): detect-and-supersede is built;
+  automatically flagging the past answers / register entries that cited a now-changed rule is not.
+- **Auth → Clerk/SSO + per-user identity**: still a shared passcode; no `users` / `roles` table.
+- **Return prep / reporting** (Phase 4).
 
 ---
 
@@ -166,25 +177,22 @@ The authority hierarchy and the citations both depend on the retrieval layer ret
 
 ## 8. Priority backlog (do in this order)
 
-1. **FIX the DB-mode metadata drop (correctness bug).**
-   `lib/rag/retrieve.ts` selects only `id, content, articleRef, documentId, similarity` and
-   `getRelevantChunks()` maps DB rows with `instrument/sourceUrl/effectiveDate/docTitle = null`.
-   So in **database mode** the model loses authority type and source URLs — the authority-hierarchy
-   instruction can't fire and citations have no URLs, even though **local-index mode has them**.
-   → Join `documents` in `retrieve.ts`; return `instrument`, `sourceUrl`, `effectiveDate`,
-   `docTitle`; map them through in `context.ts`. Make DB mode match local-index mode.
-2. **Gate `/api/chat` with Clerk auth** (+ middleware). Internal tool with sensitive data must not
-   ship with an open endpoint.
-3. **Build the F&A eval set + harness** (~20–30 real questions with correct cited answers). Score
-   answered-vs-escalate accuracy. Needed before *any* accuracy claim is made.
-4. **Determination engine (Phase 1)** in `lib/determination/` using `determinationContract`:
-   deterministic UAE VAT rules first (reverse charge on imported services, designated zones,
-   first-supply residential zero-rating, blocked input tax), RAG fallback for the rest, route
-   low-confidence/flagged cases to an F&A review queue.
-5. **Bilingual chunking.** FTA PDFs are Arabic+English; segment by language in `ingest.ts` so chunks
+**Already done since this brief was first written** (kept for history): the DB-mode metadata drop is
+fixed (`retrieve.ts` joins `documents` and returns `instrument`/`sourceUrl`/`effectiveDate`/`docTitle`,
+mapped through `context.ts`); `/api/chat` (and every route) is gated by the passcode `proxy.ts`; the
+**eval harness** exists (`scripts/eval.ts`); the **determination engine** is built (`lib/ai/determine.ts`);
+`ingest.ts` now reads `corpus/manifest.json`.
+
+**Now (do in this order):**
+1. **Change-impact — impact flagging.** Build the durable Vercel Workflow that, on a `law_changes`
+   entry, flags the `query_log` answers (and future register entries) that cited the changed chunk
+   for human re-review. Detection + supersession already exist; this is the remaining half of Phase 3.
+2. **Compliance register + tracker + reminders** (Phase 2): `compliance_items` table, dashboard,
+   Vercel Cron reminders, PDF/Excel export.
+3. **Bilingual chunking.** FTA PDFs are Arabic+English; segment by language in `ingest.ts` so chunks
    aren't mixed-script (mixed scripts dilute embeddings and hurt retrieval).
-6. **Minor:** make `ingest.ts` actually read `corpus/manifest.json` (the comment promises an
-   override it never loads); replace the `layout.tsx` "Create Next App" metadata.
+4. **Per-user identity / Clerk SSO** to replace the shared passcode (enables per-user chat history + roles).
+5. **Minor:** replace any leftover `layout.tsx` boilerplate metadata.
 
 ---
 
@@ -207,10 +215,10 @@ The authority hierarchy and the citations both depend on the retrieval layer ret
 | Phase | Theme | Jurisdiction | Status |
 |---|---|---|---|
 | 0 | Ingestion + pgvector + answer contract | UAE | Built |
-| 1 | Cited Q&A + Vendor VAT determination | UAE | Q&A built; determination pending |
-| 1.5 | Invoice upload + vision extraction | UAE | Not started |
+| 1 | Cited Q&A + Vendor VAT determination | UAE | **Built** |
+| 1.5 | Invoice upload + extraction | UAE | **Built** |
 | 2 | Compliance register + deadline tracker + reminders | UAE | Not started |
-| 3 | Change-impact engine | UAE | Not started |
+| 3 | Change-impact engine | UAE | **Foundation built** — versioning, temporal retrieval, detection cron, `tax_parameters`; impact-flagging pending |
 | 4 | Draft return preparation + reporting | UAE | Not started |
 
 **Out of scope (explicit):** autonomous/automatic filing; aggressive tax-optimisation;
