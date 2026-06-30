@@ -71,16 +71,29 @@ export const lawChunks = pgTable(
 );
 
 // Every Q&A logged — for audit, eval scoring, and measuring F&A time saved.
-export const queryLog = pgTable("query_log", {
-  id: serial("id").primaryKey(),
-  question: text("question").notNull(),
-  answer: text("answer"),
-  status: varchar("status", { length: 16 }), // answered | escalate
-  confidence: varchar("confidence", { length: 8 }), // high | medium | low
-  retrievedChunkIds: jsonb("retrieved_chunk_ids"),
-  citations: jsonb("citations"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// Also the cloud store behind the Review Queue: escalated rows (status =
+// 'escalate') are read back, newest-first, and shown to every user.
+export const queryLog = pgTable(
+  "query_log",
+  {
+    id: serial("id").primaryKey(),
+    question: text("question").notNull(),
+    answer: text("answer"),
+    status: varchar("status", { length: 16 }), // answered | escalate
+    confidence: varchar("confidence", { length: 8 }), // high | medium | low
+    // CT | VAT | null — lets the Review Queue label/filter escalations by tax.
+    taxType: varchar("tax_type", { length: 16 }),
+    // Why an escalated Q&A needs a human — surfaced in the Review Queue.
+    escalationReason: text("escalation_reason"),
+    retrievedChunkIds: jsonb("retrieved_chunk_ids"),
+    citations: jsonb("citations"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    // The Review Queue filters by status and sorts newest-first.
+    index("query_log_status_idx").on(t.status, t.createdAt),
+  ],
+);
 
 // The trust backbone — who did/saw/approved what.
 export const auditLog = pgTable("audit_log", {

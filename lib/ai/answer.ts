@@ -115,6 +115,11 @@ export async function answerQuestion(
       answer: result.answer,
       status: result.status,
       confidence: result.confidence,
+      taxType: opts.taxType ?? null,
+      // Only escalations carry a reason; answered rows store null. This is what
+      // the Review Queue shows reviewers, so persist it alongside the question.
+      escalationReason:
+        result.status === "escalate" ? result.escalationReason ?? null : null,
       retrievedChunkIds,
       citations: result.citations,
     });

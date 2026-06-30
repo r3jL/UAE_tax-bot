@@ -2,6 +2,7 @@
 
 import { MODULES, SERIF, type ModuleKey } from "../_lib/lex-data";
 import { InvoiceModule } from "./invoice-module";
+import { ReviewQueueModule } from "./review-queue-module";
 
 interface PlannedModulesProps {
   module: Exclude<ModuleKey, "ask">;
@@ -31,7 +32,13 @@ export function PlannedModules({ module }: PlannedModulesProps) {
           </p>
         </div>
 
-        {module === "invoice" ? <InvoiceModule /> : <UnderConstruction />}
+        {module === "invoice" ? (
+          <InvoiceModule />
+        ) : module === "queue" ? (
+          <ReviewQueueModule />
+        ) : (
+          <UnderConstruction />
+        )}
       </div>
     </div>
   );

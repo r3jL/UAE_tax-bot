@@ -95,8 +95,33 @@ async function main() {
       ON tax_parameters (param_key, jurisdiction, effective_date)
   `;
 
+  // --- query_log: Review Queue fields (escalation reason + tax type) ---
+  // The Review Queue reads escalated Q&A from query_log. Create the table if a
+  // DB predates `drizzle-kit push`, then add the new columns idempotently.
+  await sql`
+    CREATE TABLE IF NOT EXISTS query_log (
+      id serial PRIMARY KEY,
+      question text NOT NULL,
+      answer text,
+      status varchar(16),
+      confidence varchar(8),
+      retrieved_chunk_ids jsonb,
+      citations jsonb,
+      created_at timestamp DEFAULT now()
+    )
+  `;
+  await sql`
+    ALTER TABLE query_log
+      ADD COLUMN IF NOT EXISTS tax_type varchar(16),
+      ADD COLUMN IF NOT EXISTS escalation_reason text
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS query_log_status_idx
+      ON query_log (status, created_at)
+  `;
+
   console.log(
-    "Additive migration applied: lifecycle columns, law_changes, tax_parameters.",
+    "Additive migration applied: lifecycle columns, law_changes, tax_parameters, query_log review-queue fields.",
   );
   process.exit(0);
 }

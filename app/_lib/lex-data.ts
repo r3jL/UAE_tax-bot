@@ -63,6 +63,7 @@ export interface Sample {
 // ── Invoice Upload / Vendor VAT Check ────────────────────────────────────────
 // Mirrors invoiceFieldsContract + determinationContract from lib/ai/contracts.
 export type SupplyType = "goods" | "services" | "mixed" | "unknown";
+export type InvoiceLanguage = "en" | "ar" | "mixed" | "unknown";
 
 export interface InvoiceFieldsData {
   vendorName: string;
@@ -76,6 +77,7 @@ export interface InvoiceFieldsData {
   description: string;
   lineItems: { description: string; amount: string }[];
   supplyType: SupplyType;
+  language: InvoiceLanguage;
 }
 
 export type Treatment =
@@ -140,6 +142,7 @@ export const SAMPLE_INVOICE: { fields: InvoiceFieldsData; determination: Determi
       { description: "Concrete pump hire", amount: "AED 9,600.00" },
     ],
     supplyType: "goods",
+    language: "en",
   },
   determination: {
     treatment: "standard_5",
@@ -168,6 +171,14 @@ export const SAMPLE_INVOICE: { fields: InvoiceFieldsData; determination: Determi
       notes: [],
     },
   },
+};
+
+// Human labels for the detected invoice language, shown as a badge on the card.
+export const INVOICE_LANGUAGE_LABELS: Record<InvoiceLanguage, string> = {
+  en: "English",
+  ar: "Arabic",
+  mixed: "Bilingual · AR / EN",
+  unknown: "Language unknown",
 };
 
 // Editable field rows shown in the "Extracted fields — confirm" card.
@@ -332,6 +343,57 @@ export interface QueueItem {
   when: string;
   type: string;
   reason: string;
+  // Set on real (cloud-backed) escalations; absent on the mock showcase rows.
+  id?: number;
+  confidence?: Confidence | null;
+  taxType?: string | null;
+}
+
+// A row from GET /api/review-queue (escalated query_log entries). Dates arrive
+// as ISO strings over JSON.
+export interface ReviewQueueRow {
+  id: number;
+  question: string;
+  escalationReason: string | null;
+  confidence: Confidence | null;
+  taxType: string | null;
+  createdAt: string;
+}
+
+// Compact "2h ago" style timestamp for the Review Queue. Client-only.
+export function relativeTime(iso: string | null): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (secs < 60) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString("en-AE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// Map a cloud row into the QueueItem shape the list + Drawer already render.
+export function reviewRowToQueueItem(r: ReviewQueueRow): QueueItem {
+  return {
+    id: r.id,
+    q: r.question,
+    from: r.taxType ? `${r.taxType} · Ask` : "Ask",
+    when: relativeTime(r.createdAt),
+    type: "Escalated question",
+    reason:
+      r.escalationReason ??
+      "No grounded answer in the source corpus — routed to a finance reviewer.",
+    confidence: r.confidence,
+    taxType: r.taxType,
+  };
 }
 
 export const QUEUE: QueueItem[] = [

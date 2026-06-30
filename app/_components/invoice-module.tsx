@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import {
   CONF_MAP,
   INVOICE_FIELD_LABELS,
+  INVOICE_LANGUAGE_LABELS,
   MISMATCH_LABELS,
   RECOVERABLE_LABELS,
   SAMPLE_INVOICE,
@@ -576,7 +577,41 @@ export function InvoiceModule() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, animation: "lexrise .3s ease both" }}>
           {/* Extracted fields */}
           <div style={{ ...card, padding: 20 }}>
-            <div style={cap}>Extracted fields — confirm</div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 12,
+              }}
+            >
+              <span style={{ ...cap, marginBottom: 0 }}>Extracted fields — confirm</span>
+              {(() => {
+                const hasArabic = fields.language === "ar" || fields.language === "mixed";
+                return (
+                  <span
+                    title={
+                      hasArabic
+                        ? "Arabic text detected on this invoice — fields were read and translated from Arabic."
+                        : "Detected invoice language."
+                    }
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "3px 9px",
+                      borderRadius: 999,
+                      whiteSpace: "nowrap",
+                      color: hasArabic ? "#9a6b18" : "#8a8a83",
+                      background: hasArabic ? "#fbf3e2" : "#f4f4f1",
+                      border: `1px solid ${hasArabic ? "#f0e0bd" : "#ececea"}`,
+                    }}
+                  >
+                    {INVOICE_LANGUAGE_LABELS[fields.language]}
+                  </span>
+                );
+              })()}
+            </div>
             {INVOICE_FIELD_LABELS.map(({ key, label }) => (
               <label
                 key={key}

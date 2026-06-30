@@ -105,6 +105,11 @@ export const invoiceFieldsContract = z.object({
   supplyType: z
     .enum(["goods", "services", "mixed", "unknown"])
     .describe("Whether the supply is goods, services, mixed, or unclear."),
+  language: z
+    .enum(["en", "ar", "mixed", "unknown"])
+    .describe(
+      "Primary language/script of the invoice: 'en' English only, 'ar' Arabic only, 'mixed' bilingual Arabic + English (very common in the UAE), 'unknown' if unclear.",
+    ),
 });
 
 export type InvoiceFields = z.infer<typeof invoiceFieldsContract>;
