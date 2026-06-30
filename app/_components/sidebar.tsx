@@ -180,6 +180,10 @@ export function Sidebar({ module, role, onNavigate, onSetRole, onNewChat }: Side
         }}
       >
         {NAV_ORDER.map((key) => {
+          // Reviewer-only modules (the Review Queue) are hidden unless the
+          // current view is Reviewer. POC gate — driven by the role toggle, not
+          // real auth.
+          if (REVIEWER_ONLY[key] && !isReviewer) return null;
           const active = key === module;
           return (
             <button
