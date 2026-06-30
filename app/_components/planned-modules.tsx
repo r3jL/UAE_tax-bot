@@ -6,9 +6,10 @@ import { ReviewQueueModule } from "./review-queue-module";
 
 interface PlannedModulesProps {
   module: Exclude<ModuleKey, "ask">;
+  isReviewer: boolean;
 }
 
-export function PlannedModules({ module }: PlannedModulesProps) {
+export function PlannedModules({ module, isReviewer }: PlannedModulesProps) {
   const meta = MODULES[module];
 
   return (
@@ -35,10 +36,47 @@ export function PlannedModules({ module }: PlannedModulesProps) {
         {module === "invoice" ? (
           <InvoiceModule />
         ) : module === "queue" ? (
-          <ReviewQueueModule />
+          // Tab is visible to everyone, but only Reviewers see the data. Staff
+          // get a locked screen; the module (and its data fetch) never mounts
+          // for them. POC gate — driven by the role toggle, not real auth.
+          isReviewer ? (
+            <ReviewQueueModule />
+          ) : (
+            <Restricted />
+          )
         ) : (
           <UnderConstruction />
         )}
+      </div>
+    </div>
+  );
+}
+
+// Locked screen shown to non-Reviewers on a reviewer-only tab. The tab is
+// visible to everyone (so staff know it exists), but the data stays hidden.
+function Restricted() {
+  return (
+    <div
+      style={{
+        minHeight: "46vh",
+        borderRadius: 16,
+        border: "1px solid #ececea",
+        background: "#fafaf9",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "40px 24px",
+      }}
+    >
+      <div style={{ textAlign: "center", maxWidth: 380 }}>
+        <div style={{ fontSize: 30, lineHeight: 1, marginBottom: 10 }}>🔒</div>
+        <div style={{ fontFamily: SERIF, fontSize: 21, fontWeight: 600 }}>
+          Reviewers only
+        </div>
+        <div style={{ fontSize: 13.5, color: "#6b6b66", marginTop: 8, lineHeight: 1.6 }}>
+          Escalated questions are visible to Finance Reviewers. Switch to the{" "}
+          <strong>Reviewer</strong> view to see the queue.
+        </div>
       </div>
     </div>
   );

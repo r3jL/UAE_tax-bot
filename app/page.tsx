@@ -7,7 +7,6 @@ import { Drawer } from "./_components/drawer";
 import { Markdown } from "./_components/markdown";
 import {
   CONF_MAP,
-  REVIEWER_ONLY,
   SERIF,
   filterToTaxType,
   resolveSample,
@@ -132,16 +131,6 @@ export default function Workspace() {
     setDrawer(null);
   }
 
-  // Switching the view away from Reviewer must not leave you parked on a
-  // reviewer-only module (the Review Queue) — bounce back to Ask.
-  function changeRole(next: Role) {
-    setRole(next);
-    if (next !== "reviewer" && REVIEWER_ONLY[module]) {
-      setModule("ask");
-      setDrawer(null);
-    }
-  }
-
   function newChat() {
     setModule("ask");
     setMessages([]);
@@ -178,7 +167,7 @@ export default function Workspace() {
         module={module}
         role={role}
         onNavigate={go}
-        onSetRole={changeRole}
+        onSetRole={setRole}
         onNewChat={newChat}
       />
 
@@ -268,7 +257,7 @@ export default function Workspace() {
               </>
             )
           ) : (
-            <PlannedModules module={module} />
+            <PlannedModules module={module} isReviewer={role === "reviewer"} />
           )}
         </div>
       </div>
