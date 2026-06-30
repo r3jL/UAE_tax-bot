@@ -67,6 +67,47 @@ export function ReviewQueueModule() {
     fetchQueue().then(applyData).catch(applyError);
   }
 
+  // Any user can delete from the shared queue. Optimistic remove, with a reload
+  // from the source of truth if the request fails.
+  async function remove(item: QueueItem) {
+    if (item.id == null) return;
+    if (
+      !window.confirm(
+        "Delete this escalated question? It’s removed from the queue for everyone and can’t be undone.",
+      )
+    )
+      return;
+    const id = item.id;
+    setItems((prev) => prev.filter((x) => x.id !== id));
+    setSelected((s) => (s?.id === id ? null : s));
+    try {
+      const res = await fetch(`/api/review-queue?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch {
+      refresh();
+    }
+  }
+
+  async function clearAll() {
+    if (items.length === 0) return;
+    if (
+      !window.confirm(
+        `Delete all ${items.length} escalated question${
+          items.length === 1 ? "" : "s"
+        } from the queue? This can’t be undone.`,
+      )
+    )
+      return;
+    setItems([]);
+    setSelected(null);
+    try {
+      const res = await fetch("/api/review-queue?all=1", { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch {
+      refresh();
+    }
+  }
+
   return (
     <div>
       {/* header row: count + refresh */}
@@ -83,23 +124,42 @@ export function ReviewQueueModule() {
             ? `${items.length} escalation${items.length === 1 ? "" : "s"} awaiting review`
             : " "}
         </div>
-        <button
-          onClick={refresh}
-          disabled={state === "loading"}
-          style={{
-            border: "1px solid #e0e0db",
-            borderRadius: 99,
-            background: "#fff",
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: "#5a564d",
-            padding: "6px 14px",
-            cursor: state === "loading" ? "default" : "pointer",
-            opacity: state === "loading" ? 0.6 : 1,
-          }}
-        >
-          {state === "loading" ? "Loading…" : "Refresh"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          {state === "ready" && items.length > 0 && (
+            <button
+              onClick={clearAll}
+              style={{
+                border: "1px solid #f0dcd8",
+                borderRadius: 99,
+                background: "#fff",
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: "#b0453a",
+                padding: "6px 14px",
+                cursor: "pointer",
+              }}
+            >
+              Clear all
+            </button>
+          )}
+          <button
+            onClick={refresh}
+            disabled={state === "loading"}
+            style={{
+              border: "1px solid #e0e0db",
+              borderRadius: 99,
+              background: "#fff",
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: "#5a564d",
+              padding: "6px 14px",
+              cursor: state === "loading" ? "default" : "pointer",
+              opacity: state === "loading" ? 0.6 : 1,
+            }}
+          >
+            {state === "loading" ? "Loading…" : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {state === "error" && (
@@ -133,6 +193,7 @@ export function ReviewQueueModule() {
               key={item.id ?? item.q}
               item={item}
               onOpen={() => setSelected(item)}
+              onDelete={() => remove(item)}
             />
           ))}
         </div>
@@ -143,94 +204,131 @@ export function ReviewQueueModule() {
   );
 }
 
-function QueueCard({ item, onOpen }: { item: QueueItem; onOpen: () => void }) {
+function QueueCard({
+  item,
+  onOpen,
+  onDelete,
+}: {
+  item: QueueItem;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
   const conf = item.confidence ? CONF_MAP[item.confidence] : null;
   return (
-    <button
-      onClick={onOpen}
+    // Container (not a button) so the Delete control is a sibling, not nested
+    // inside the clickable card — keeps the HTML valid and both keyboard-usable.
+    <div
       style={{
-        textAlign: "left",
+        position: "relative",
         border: "1px solid #ececea",
         borderRadius: 14,
         background: "#fff",
-        padding: "16px 18px",
-        cursor: "pointer",
-        display: "block",
-        width: "100%",
       }}
     >
-      <div
+      <button
+        onClick={onOpen}
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 8,
-          flexWrap: "wrap",
+          textAlign: "left",
+          border: "none",
+          background: "transparent",
+          borderRadius: 14,
+          padding: "16px 18px",
+          paddingRight: 90, // leave room for the Delete button
+          cursor: "pointer",
+          display: "block",
+          width: "100%",
         }}
       >
-        <span
+        <div
           style={{
-            fontSize: 10.5,
-            fontWeight: 600,
-            letterSpacing: ".07em",
-            textTransform: "uppercase",
-            color: "#9a6b18",
-            background: "#f7efdd",
-            borderRadius: 99,
-            padding: "3px 9px",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 8,
+            flexWrap: "wrap",
           }}
         >
-          {item.type}
-        </span>
-        {item.taxType && (
           <span
             style={{
               fontSize: 10.5,
               fontWeight: 600,
-              color: "#5a564d",
-              background: "#f1f1ee",
+              letterSpacing: ".07em",
+              textTransform: "uppercase",
+              color: "#9a6b18",
+              background: "#f7efdd",
               borderRadius: 99,
               padding: "3px 9px",
             }}
           >
-            {item.taxType}
+            {item.type}
           </span>
-        )}
-        {conf && (
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: conf.color }}>
-            {conf.label}
-          </span>
-        )}
-        <span style={{ marginLeft: "auto", fontSize: 12, color: "#a8a8a2" }}>
-          {item.when}
-        </span>
-      </div>
-      <div
+          {item.taxType && (
+            <span
+              style={{
+                fontSize: 10.5,
+                fontWeight: 600,
+                color: "#5a564d",
+                background: "#f1f1ee",
+                borderRadius: 99,
+                padding: "3px 9px",
+              }}
+            >
+              {item.taxType}
+            </span>
+          )}
+          {conf && (
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: conf.color }}>
+              {conf.label}
+            </span>
+          )}
+          <span style={{ fontSize: 12, color: "#a8a8a2" }}>{item.when}</span>
+        </div>
+        <div
+          style={{
+            fontFamily: SERIF,
+            fontSize: 16,
+            fontWeight: 600,
+            lineHeight: 1.4,
+            color: "#1a1a1a",
+            marginBottom: 6,
+          }}
+        >
+          {item.q}
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            lineHeight: 1.55,
+            color: "#6b6b66",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {item.reason}
+        </div>
+      </button>
+      <button
+        onClick={onDelete}
+        title="Delete from the queue"
         style={{
-          fontFamily: SERIF,
-          fontSize: 16,
+          position: "absolute",
+          top: 12,
+          right: 12,
+          border: "1px solid #f0dcd8",
+          borderRadius: 8,
+          background: "#fff",
+          fontSize: 12,
           fontWeight: 600,
-          lineHeight: 1.4,
-          color: "#1a1a1a",
-          marginBottom: 6,
+          color: "#b0453a",
+          padding: "4px 10px",
+          cursor: "pointer",
         }}
       >
-        {item.q}
-      </div>
-      <div
-        style={{
-          fontSize: 13,
-          lineHeight: 1.55,
-          color: "#6b6b66",
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-        }}
-      >
-        {item.reason}
-      </div>
-    </button>
+        Delete
+      </button>
+    </div>
   );
 }
 

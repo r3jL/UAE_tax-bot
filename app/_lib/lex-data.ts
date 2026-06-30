@@ -275,9 +275,9 @@ export const MODULES: Record<ModuleKey, ModuleMeta> = {
 export const NAV_ORDER: ModuleKey[] = [
   "ask",
   "invoice",
+  "queue",
   "vendor",
   "register",
-  "queue",
   "alerts",
   "history",
   "reports",
