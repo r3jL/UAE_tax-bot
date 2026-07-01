@@ -1,11 +1,12 @@
 import { generateObject } from "ai";
 import { extractText, getDocumentProxy } from "unpdf";
-import { extractionModel, visionModel } from "./models";
+import { invoiceModel } from "./models";
 import { invoiceFieldsContract, type InvoiceFields } from "./contracts";
 
 // Reads a vendor invoice and extracts its fields for the VAT determination step.
-// PDFs with a text layer are parsed locally (unpdf) and read by the text model;
-// images (and scanned PDFs uploaded as images) go to the vision model.
+// PDFs with a text layer are parsed locally (unpdf) and their text is read by
+// the invoice model; images (and scanned PDFs uploaded as images) are sent to
+// that same (multimodal) model. Both go through the Vercel AI Gateway.
 
 const SYSTEM = `You read UAE vendor invoices and extract their fields accurately.
 Use exactly what is printed — never invent or infer a VAT amount that is not shown.
@@ -28,7 +29,7 @@ export interface InvoiceInput {
 // script deterministically — counting Arabic vs Latin letters is exact and free,
 // which makes it the source of truth there (LLMs are unreliable at self-reporting
 // meta-fields like language). The image path has no pre-OCR text, so there we
-// trust the vision model's "language" field instead.
+// trust the model's "language" field instead.
 function detectScriptLanguage(text: string): InvoiceFields["language"] {
   let arabic = 0;
   let latin = 0;
@@ -73,7 +74,7 @@ export async function extractInvoice(input: InvoiceInput): Promise<InvoiceFields
       );
     }
     const { object } = await generateObject({
-      model: extractionModel(),
+      model: invoiceModel(),
       schema: invoiceFieldsContract,
       temperature: 0,
       maxOutputTokens: 2000, // bound output — stops free models running away
@@ -89,7 +90,7 @@ export async function extractInvoice(input: InvoiceInput): Promise<InvoiceFields
 
   if (isImage(input)) {
     const { object } = await generateObject({
-      model: visionModel(),
+      model: invoiceModel(),
       schema: invoiceFieldsContract,
       temperature: 0,
       maxOutputTokens: 2000,

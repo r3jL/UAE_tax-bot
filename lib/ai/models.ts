@@ -302,12 +302,15 @@ export function visionModel() {
   );
 }
 
-// Model for invoice field extraction. Prefers Gemini (fast + reliable at
-// reading dense, multi-column invoice tables); falls back to the reasoning
-// model when no Google key is set.
-export function extractionModel() {
-  const key = process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY;
-  return key
-    ? clientFor("google").chatModel(process.env.VISION_MODEL ?? "gemini-2.0-flash")
-    : REASONING_MODEL;
+// Model for reading uploaded invoices — both the PDF-text and image paths.
+// Routes through the Vercel AI Gateway by default: Claude Sonnet is multimodal
+// (reads the extracted PDF text AND images directly) and far steadier than the
+// free OpenRouter/Groq hosts, whose backing providers intermittently return 502
+// and blow through the SDK's short retry window ("Failed after 3 attempts. Last
+// error: Bad Gateway"). Kept independent of REASONING_PROVIDER/VISION_PROVIDER
+// on purpose, so cheap free-tier routing for chat/RAG never drags invoice
+// reading back onto a flaky upstream. Override with INVOICE_MODEL (any slug the
+// Gateway knows). Needs AI_GATEWAY_API_KEY.
+export function invoiceModel() {
+  return process.env.INVOICE_MODEL ?? GATEWAY.reasoning;
 }
