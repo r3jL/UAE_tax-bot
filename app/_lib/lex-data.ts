@@ -50,7 +50,25 @@ export interface AnswerResult {
 
 export type Message =
   | { role: "user"; text: string; files?: string[] }
-  | { role: "assistant"; resp: AnswerResult; showReasoning: boolean };
+  | { role: "assistant"; resp: AnswerResult; showReasoning: boolean }
+  // A human answer sent back from the Review Queue into this thread.
+  | { role: "reviewer"; text: string; from?: string; messageId?: number };
+
+// A saved chat session shown in the sidebar (from GET /api/sessions).
+export interface SessionSummary {
+  id: number;
+  title: string;
+  updatedAt: string;
+}
+
+// An unread "your question was answered" ping (from GET /api/notifications).
+export interface NotificationItem {
+  id: number;
+  sessionId: number;
+  messageId: number | null;
+  title: string;
+  createdAt: string;
+}
 
 export interface Sample {
   key: string;
@@ -283,6 +301,11 @@ export const NAV_ORDER: ModuleKey[] = [
   "reports",
 ];
 
+// Claude-style sidebar: a few primary modules always visible, the rest tucked
+// under an expandable "More".
+export const PRIMARY_NAV: ModuleKey[] = ["ask", "invoice", "queue", "vendor"];
+export const MORE_NAV: ModuleKey[] = ["register", "alerts", "history", "reports"];
+
 export const REVIEWER_ONLY: Partial<Record<ModuleKey, boolean>> = { queue: true };
 
 export const CONF_MAP: Record<Confidence, { label: string; color: string }> = {
@@ -357,6 +380,7 @@ export interface ReviewQueueRow {
   escalationReason: string | null;
   confidence: Confidence | null;
   taxType: string | null;
+  username: string | null;
   createdAt: string;
 }
 
@@ -385,7 +409,7 @@ export function reviewRowToQueueItem(r: ReviewQueueRow): QueueItem {
   return {
     id: r.id,
     q: r.question,
-    from: r.taxType ? `${r.taxType} · Ask` : "Ask",
+    from: r.username ? `@${r.username}` : "Ask",
     when: relativeTime(r.createdAt),
     type: "Escalated question",
     reason:

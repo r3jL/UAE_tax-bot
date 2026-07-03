@@ -30,9 +30,10 @@ async function fetchQueue(): Promise<QueueData> {
 }
 
 // The Review Queue: escalated Q&A read from the shared cloud DB (query_log via
-// /api/review-queue) and shown to every user. Reuses the existing Drawer for the
-// detail view. Read-only listing — reviewer sign-off is a later phase.
-export function ReviewQueueModule() {
+// /api/review-queue) and shown to every user. Reuses the Drawer for the detail
+// view, where any signed-in user can write an answer and send it back to the
+// asker's session. hasUsername gates the answer composer (guests can't answer).
+export function ReviewQueueModule({ hasUsername }: { hasUsername: boolean }) {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [state, setState] = useState<LoadState>("loading");
   const [dbReady, setDbReady] = useState(true);
@@ -106,6 +107,24 @@ export function ReviewQueueModule() {
     } catch {
       refresh();
     }
+  }
+
+  // Send a human answer back to the asker. On success the escalation resolves
+  // server-side (message inserted into the asker's session + notification), so
+  // we drop it from the queue and close the drawer.
+  async function answer(item: QueueItem, text: string) {
+    if (item.id == null) return;
+    const res = await fetch("/api/review-queue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id, answer: text }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d?.error || "Could not send the answer.");
+    }
+    setItems((prev) => prev.filter((x) => x.id !== item.id));
+    setSelected(null);
   }
 
   return (
@@ -199,7 +218,12 @@ export function ReviewQueueModule() {
         </div>
       )}
 
-      <Drawer item={selected} onClose={() => setSelected(null)} />
+      <Drawer
+        item={selected}
+        onClose={() => setSelected(null)}
+        canAnswer={hasUsername}
+        onSend={selected ? (text) => answer(selected, text) : undefined}
+      />
     </div>
   );
 }

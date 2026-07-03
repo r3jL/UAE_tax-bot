@@ -79,7 +79,7 @@ export const queryLog = pgTable(
     id: serial("id").primaryKey(),
     question: text("question").notNull(),
     answer: text("answer"),
-    status: varchar("status", { length: 16 }), // answered | escalate
+    status: varchar("status", { length: 16 }), // answered | escalate | resolved
     confidence: varchar("confidence", { length: 8 }), // high | medium | low
     // CT | VAT | null — lets the Review Queue label/filter escalations by tax.
     taxType: varchar("tax_type", { length: 16 }),
@@ -87,12 +87,72 @@ export const queryLog = pgTable(
     escalationReason: text("escalation_reason"),
     retrievedChunkIds: jsonb("retrieved_chunk_ids"),
     citations: jsonb("citations"),
+    // Who asked + where. username/sessionId are set only for signed-in
+    // (non-guest) users; an escalation is answerable in the Review Queue ONLY
+    // when it carries a username to route the answer back to.
+    username: varchar("username", { length: 64 }),
+    sessionId: integer("session_id"),
+    // A reviewer's human answer sent back from the Review Queue, and who/when.
+    // Setting these flips status → 'resolved' and drops the row out of the queue.
+    reviewerAnswer: text("reviewer_answer"),
+    reviewedBy: varchar("reviewed_by", { length: 64 }),
+    reviewedAt: timestamp("reviewed_at"),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => [
     // The Review Queue filters by status and sorts newest-first.
     index("query_log_status_idx").on(t.status, t.createdAt),
   ],
+);
+
+// A saved chat thread, owned by a username. Guests don't get sessions.
+export const chatSessions = pgTable(
+  "chat_sessions",
+  {
+    id: serial("id").primaryKey(),
+    username: varchar("username", { length: 64 }).notNull(),
+    title: text("title").notNull().default("New chat"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => [index("chat_sessions_user_idx").on(t.username, t.updatedAt)],
+);
+
+// One message in a session. role='reviewer' is a human answer sent back from
+// the Review Queue. `data` carries the rich payload (AnswerResult for assistant
+// turns, file names for user turns, reviewer name for reviewer turns).
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id")
+      .references(() => chatSessions.id)
+      .notNull(),
+    role: varchar("role", { length: 16 }).notNull(), // user | assistant | reviewer
+    content: text("content").notNull().default(""),
+    data: jsonb("data"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [index("chat_messages_session_idx").on(t.sessionId, t.createdAt)],
+);
+
+// A "your question was answered" ping for the asker, created when a reviewer
+// sends an answer back. Clicking it opens the session at the reviewer's reply.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    username: varchar("username", { length: 64 }).notNull(), // recipient
+    sessionId: integer("session_id")
+      .references(() => chatSessions.id)
+      .notNull(),
+    messageId: integer("message_id"), // the reviewer message to scroll to
+    queryLogId: integer("query_log_id"),
+    title: text("title").notNull(),
+    read: varchar("read", { length: 4 }).notNull().default("no"), // no | yes
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [index("notifications_user_idx").on(t.username, t.read, t.createdAt)],
 );
 
 // The trust backbone — who did/saw/approved what.
