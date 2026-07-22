@@ -19,6 +19,14 @@ export type Confidence = "high" | "medium" | "low";
 export type Role = "staff" | "reviewer";
 export type TaxFilter = "All" | "Corporate Tax" | "VAT";
 
+// Session HISTORY (the browsable sidebar archive + notification bell) is
+// feature-flagged OFF for now, pending real auth (Entra ID) — the current
+// username is a claimable handle, not an identity, so a browsable archive
+// keyed to it is premature. The flag only hides the archive UI: the live
+// conversation still uses its session server-side for multi-turn context,
+// files and compaction. Re-enable with NEXT_PUBLIC_SESSION_HISTORY=on.
+export const SESSION_HISTORY_ENABLED = process.env.NEXT_PUBLIC_SESSION_HISTORY === "on";
+
 export type ModuleKey =
   | "ask"
   | "vendor"

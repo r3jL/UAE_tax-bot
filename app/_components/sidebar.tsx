@@ -6,6 +6,7 @@ import {
   MORE_NAV,
   PRIMARY_NAV,
   SERIF,
+  SESSION_HISTORY_ENABLED,
   type ModuleKey,
   type SessionSummary,
 } from "../_lib/lex-data";
@@ -296,8 +297,8 @@ export function Sidebar({
           </>
         )}
 
-        {/* divider + saved sessions */}
-        {!collapsed && (
+        {/* divider + saved sessions (hidden while session history is off) */}
+        {!collapsed && SESSION_HISTORY_ENABLED && (
           <>
             <div style={{ borderTop: "1px solid #e8e8e4", margin: "10px 4px 8px" }} />
             {username ? (

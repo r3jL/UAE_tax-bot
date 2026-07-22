@@ -10,6 +10,7 @@ import {
   CONF_MAP,
   SAMPLE_INVOICE,
   SERIF,
+  SESSION_HISTORY_ENABLED,
   filterToTaxType,
   resolveSample,
   type AnswerResult,
@@ -89,6 +90,7 @@ export default function Workspace() {
   }, []);
 
   const refreshSessions = useCallback(() => {
+    if (!SESSION_HISTORY_ENABLED) return; // archive hidden — nothing to list
     fetch("/api/sessions")
       .then((r) => r.json())
       .then((d) => setSessions(d.sessions ?? []))
@@ -487,7 +489,9 @@ export default function Workspace() {
             minHeight: 20,
           }}
         >
-          <NotificationBell username={username} onOpen={openNotification} />
+          {SESSION_HISTORY_ENABLED && (
+            <NotificationBell username={username} onOpen={openNotification} />
+          )}
         </div>
 
         <div
