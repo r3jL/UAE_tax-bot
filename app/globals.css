@@ -98,6 +98,34 @@ select:focus {
   background: #e2e1dc;
 }
 
+/* The thread is a size container so invoice cards adapt to the space actually
+   available (sidebar open vs collapsed), not just the viewport width. */
+.lex-thread {
+  container-type: inline-size;
+}
+
+/* Invoice check pair: extracted fields + treatment stack vertically by
+   default. Once a treatment exists AND the thread is wide enough, the fields
+   gently shift left and the treatment takes the right column — the pair
+   widening out of the 760px reading column. Width/margin are transitioned so
+   the shift eases rather than snaps. */
+.lex-invoice-pair {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  transition:
+    width 0.28s ease,
+    margin 0.28s ease;
+}
+@container (min-width: 1040px) {
+  .lex-invoice-pair.lex-pair-wide {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    width: min(1000px, calc(100cqw - 48px));
+    margin-left: calc((100% - min(1000px, 100cqw - 48px)) / 2);
+  }
+}
+
 /* Drag-and-drop overlay: the drop panel pops in gently over the faded app. */
 @keyframes lexdroppop {
   from {

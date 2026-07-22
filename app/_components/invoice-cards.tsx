@@ -352,6 +352,15 @@ export function DeterminationCard({ det }: { det: Determination }) {
         </Markdown>
       </div>
 
+      {det.explanation && (
+        <div style={{ margin: "0 0 12px" }}>
+          <div style={{ ...cap, marginBottom: 8 }}>Why, and what to check</div>
+          <Markdown size={13.5} color="#5a564d">
+            {det.explanation}
+          </Markdown>
+        </div>
+      )}
+
       {det.confirmWithFA && (
         <div
           style={{

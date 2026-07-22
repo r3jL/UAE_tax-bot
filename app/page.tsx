@@ -553,7 +553,11 @@ export default function Workspace() {
               </div>
             ) : (
               <>
-                <div className="lex-scroll" ref={threadRef} style={{ flex: 1, overflowY: "auto" }}>
+                <div
+                  className="lex-scroll lex-thread"
+                  ref={threadRef}
+                  style={{ flex: 1, overflowY: "auto" }}
+                >
                   <div style={{ maxWidth: 760, margin: "0 auto", padding: "28px 24px 14px" }}>
                     {messages.map((m, i) =>
                       m.role === "user" ? (
@@ -1091,27 +1095,32 @@ function InvoiceCheckMessage({
           {msg.error && (
             <div style={{ fontSize: 12.5, color: "#b0453a" }}>{msg.error}</div>
           )}
-          <InvoiceFieldsCard
-            fields={msg.fields}
-            fileName={msg.fileName}
-            determining={msg.phase === "determining"}
-            onField={onField}
-            onRun={onRun}
-          />
-          {msg.phase === "determining" && (
-            <div
-              style={{
-                fontSize: 13.5,
-                color: "#9a9a93",
-                display: "flex",
-                alignItems: "center",
-                gap: 9,
-              }}
-            >
-              <Spinner /> Retrieving the relevant VAT provisions…
-            </div>
-          )}
-          {msg.det && <DeterminationCard det={msg.det} />}
+          {/* Stacked while the check runs; once a treatment exists and the
+              thread is wide enough, the pair goes side by side (CSS container
+              query — .lex-pair-wide in globals.css). */}
+          <div className={`lex-invoice-pair${msg.det ? " lex-pair-wide" : ""}`}>
+            <InvoiceFieldsCard
+              fields={msg.fields}
+              fileName={msg.fileName}
+              determining={msg.phase === "determining"}
+              onField={onField}
+              onRun={onRun}
+            />
+            {msg.phase === "determining" && (
+              <div
+                style={{
+                  fontSize: 13.5,
+                  color: "#9a9a93",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 9,
+                }}
+              >
+                <Spinner /> Retrieving the relevant VAT provisions…
+              </div>
+            )}
+            {msg.det && <DeterminationCard det={msg.det} />}
+          </div>
         </>
       )}
     </div>

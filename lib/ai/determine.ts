@@ -16,6 +16,7 @@ Return:
 - treatment: standard_5 | zero_rated | exempt | out_of_scope | reverse_charge | designated_zone | unknown
 - inputVatRecoverable: yes | no | partial | na
 - whatToDo: a warm, plain-language next step a non-tax colleague can act on (do NOT mention chunkIds)
+- explanation: 3-6 sentences the user reads under the treatment. Name the governing provisions IN THE PROSE (e.g. "Article 45(1) of the VAT Decree-Law", "Article 53 of the Executive Regulations") — never chunkId tags. Explicitly flag anything wrong or worth checking on THIS invoice: VAT charged that differs from the expected rate, a missing/malformed vendor TRN on a standard-rated UAE supply (a valid tax invoice needs one for input VAT recovery), items whose input VAT is blocked or apportioned, or line items that don't fit the stated treatment. If everything is in order, briefly say what was checked and found correct.
 - confirmWithFA: true when this needs a human reviewer (low confidence, unusual, or high value)
 - confidence, and citations (put the chunkId of every passage you rely on in the citations array)
 

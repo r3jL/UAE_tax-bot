@@ -150,6 +150,9 @@ export interface Determination {
   treatment: Treatment;
   inputVatRecoverable: "yes" | "no" | "partial" | "na";
   whatToDo: string;
+  // Law-citing rationale + anything wrong on this invoice. Absent on checks
+  // persisted before the field existed — render conditionally.
+  explanation?: string;
   confirmWithFA: boolean;
   citations: Citation[];
   confidence: Confidence;

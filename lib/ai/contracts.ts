@@ -54,6 +54,11 @@ export const determinationContract = z.object({
   ]),
   inputVatRecoverable: z.enum(["yes", "no", "partial", "na"]),
   whatToDo: z.string().describe("Plain-language next step for non-tax staff"),
+  explanation: z
+    .string()
+    .describe(
+      "3-6 sentences for the user: WHY this treatment applies, citing the governing provisions BY NAME in the prose (e.g. 'Article 45(1) of the VAT Decree-Law'), and explicitly flagging anything wrong or worth checking on THIS invoice — VAT charged that doesn't match the expected rate, a missing or malformed TRN on a standard-rated UAE supply, blocked or partially-blocked items, or unusual line items. If nothing is wrong, say what was checked and found in order.",
+    ),
   confirmWithFA: z.boolean().describe("true routes this to the F&A review queue"),
   citations: z.array(citationSchema),
   confidence: z.enum(["high", "medium", "low"]),
