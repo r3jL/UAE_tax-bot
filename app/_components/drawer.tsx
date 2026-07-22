@@ -1,14 +1,36 @@
 "use client";
 
+import { useState } from "react";
 import { SERIF, type QueueItem } from "../_lib/lex-data";
 
 interface DrawerProps {
   item: QueueItem | null;
   onClose: () => void;
+  // When provided, the drawer shows an answer composer that sends the human
+  // reply back to the asker's session. Without it, the drawer is read-only.
+  onSend?: (answer: string) => Promise<void>;
+  canAnswer?: boolean;
 }
 
-export function Drawer({ item, onClose }: DrawerProps) {
+export function Drawer({ item, onClose, onSend, canAnswer = true }: DrawerProps) {
+  const [answer, setAnswer] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
   if (!item) return null;
+
+  async function send() {
+    if (!onSend || !answer.trim() || sending) return;
+    setSending(true);
+    setError("");
+    try {
+      await onSend(answer.trim());
+      setAnswer("");
+    } catch (e) {
+      setError((e as Error).message || "Could not send the answer.");
+      setSending(false);
+    }
+  }
 
   return (
     <>
@@ -28,7 +50,7 @@ export function Drawer({ item, onClose }: DrawerProps) {
           top: 0,
           right: 0,
           bottom: 0,
-          width: 440,
+          width: 460,
           maxWidth: "92vw",
           background: "#fff",
           borderLeft: "1px solid #ececea",
@@ -75,10 +97,7 @@ export function Drawer({ item, onClose }: DrawerProps) {
           </button>
         </div>
 
-        <div
-          className="lex-scroll"
-          style={{ flex: 1, overflowY: "auto", padding: "24px 22px" }}
-        >
+        <div className="lex-scroll" style={{ flex: 1, overflowY: "auto", padding: "24px 22px" }}>
           <div style={{ fontSize: 12, color: "#a8a8a2", marginBottom: 6 }}>
             {item.from} · {item.when}
           </div>
@@ -112,94 +131,86 @@ export function Drawer({ item, onClose }: DrawerProps) {
             >
               Escalation reason
             </div>
-            <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#5a564d" }}>
-              {item.reason}
-            </div>
+            <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#5a564d" }}>{item.reason}</div>
           </div>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: ".08em",
-              textTransform: "uppercase",
-              color: "#b4b4ae",
-              marginBottom: 8,
-            }}
-          >
-            Suggested response (for review)
-          </div>
-          <p
-            style={{
-              fontFamily: SERIF,
-              fontSize: 15.5,
-              lineHeight: 1.7,
-              color: "#1f1f1c",
-              margin: "0 0 8px",
-            }}
-          >
-            Lex could not ground this with confidence. A reviewer should confirm the
-            treatment, attach the governing article, and either approve, edit, or send
-            back to the requester.
-          </p>
+
+          {onSend && (
+            <>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: ".08em",
+                  textTransform: "uppercase",
+                  color: "#b4b4ae",
+                  marginBottom: 8,
+                }}
+              >
+                Your answer
+              </div>
+              {canAnswer ? (
+                <>
+                  <textarea
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    placeholder="Write the answer to send back to the person who asked…"
+                    rows={7}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      border: "1px solid #e0e0db",
+                      borderRadius: 12,
+                      padding: "12px 14px",
+                      fontSize: 14.5,
+                      lineHeight: 1.6,
+                      fontFamily: SERIF,
+                      resize: "vertical",
+                      outline: "none",
+                    }}
+                  />
+                  {error && (
+                    <div style={{ fontSize: 13, color: "#9a3b30", marginTop: 8 }}>{error}</div>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontSize: 13.5, color: "#6b6b66", lineHeight: 1.6 }}>
+                  Choose a username (top of the sidebar) to answer questions and send
+                  them back.
+                </div>
+              )}
+            </>
+          )}
         </div>
 
-        <div
-          style={{
-            flex: "none",
-            display: "flex",
-            gap: 8,
-            padding: "16px 22px",
-            borderTop: "1px solid #ececea",
-          }}
-        >
-          <button
-            onClick={onClose}
-            style={{
-              flex: 1,
-              border: "none",
-              borderRadius: 99,
-              background: "#1a1a1a",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-              padding: "11px 0",
-              cursor: "pointer",
-            }}
-          >
-            Approve
-          </button>
-          <button
-            onClick={onClose}
-            style={{
-              flex: 1,
-              border: "1px solid #e0e0db",
-              borderRadius: 99,
-              background: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-              padding: "11px 0",
-              cursor: "pointer",
-            }}
-          >
-            Edit answer
-          </button>
-          <button
-            onClick={onClose}
+        {onSend && canAnswer && (
+          <div
             style={{
               flex: "none",
-              border: "1px solid #e0e0db",
-              borderRadius: 99,
-              background: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-              padding: "11px 16px",
-              cursor: "pointer",
-              color: "#b0453a",
+              display: "flex",
+              gap: 8,
+              padding: "16px 22px",
+              borderTop: "1px solid #ececea",
             }}
           >
-            Send back
-          </button>
-        </div>
+            <button
+              onClick={send}
+              disabled={!answer.trim() || sending}
+              style={{
+                flex: 1,
+                border: "none",
+                borderRadius: 99,
+                background: !answer.trim() || sending ? "#e2e1dc" : "#1a1a1a",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+                padding: "11px 0",
+                cursor: !answer.trim() || sending ? "default" : "pointer",
+              }}
+            >
+              {sending ? "Sending…" : "Send answer to asker"}
+            </button>
+          </div>
+        )}
       </div>
     </>
   );

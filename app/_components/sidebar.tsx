@@ -3,19 +3,24 @@
 import { useState } from "react";
 import {
   MODULES,
-  NAV_ORDER,
-  REVIEWER_ONLY,
+  MORE_NAV,
+  PRIMARY_NAV,
   SERIF,
   type ModuleKey,
-  type Role,
+  type SessionSummary,
 } from "../_lib/lex-data";
 
 interface SidebarProps {
   module: ModuleKey;
-  role: Role;
   onNavigate: (key: ModuleKey) => void;
-  onSetRole: (role: Role) => void;
   onNewChat: () => void;
+  username: string | null;
+  sessions: SessionSummary[];
+  activeSessionId: number | null;
+  onLoadSession: (id: number) => void;
+  onDeleteSession: (id: number) => void;
+  onSwitchUser: () => void;
+  onSignOut: () => void;
 }
 
 const svg = {
@@ -91,9 +96,73 @@ function NavIcon({ k }: { k: ModuleKey }) {
   }
 }
 
-export function Sidebar({ module, role, onNavigate, onSetRole, onNewChat }: SidebarProps) {
+function NavButton({
+  k,
+  active,
+  collapsed,
+  onClick,
+}: {
+  k: ModuleKey;
+  active: boolean;
+  collapsed: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={MODULES[k].title}
+      style={{
+        width: "100%",
+        textAlign: "left",
+        border: "none",
+        background: active ? "#eceae5" : "transparent",
+        borderRadius: 9,
+        padding: collapsed ? "10px 0" : "9px 11px",
+        marginBottom: 2,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        justifyContent: collapsed ? "center" : "flex-start",
+        color: active ? "#1a1a1a" : "#5a564d",
+      }}
+    >
+      <span style={{ flex: "none", display: "flex" }}>
+        <NavIcon k={k} />
+      </span>
+      {!collapsed && (
+        <span
+          style={{
+            fontSize: 13.5,
+            fontWeight: active ? 600 : 500,
+            flex: 1,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {MODULES[k].title}
+        </span>
+      )}
+    </button>
+  );
+}
+
+export function Sidebar({
+  module,
+  onNavigate,
+  onNewChat,
+  username,
+  sessions,
+  activeSessionId,
+  onLoadSession,
+  onDeleteSession,
+  onSwitchUser,
+  onSignOut,
+}: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const isReviewer = role === "reviewer";
+  const [showMore, setShowMore] = useState(false);
+  const [hovered, setHovered] = useState<number | null>(null);
 
   return (
     <div
@@ -169,7 +238,7 @@ export function Sidebar({ module, role, onNavigate, onSetRole, onNewChat }: Side
         </button>
       </div>
 
-      {/* nav */}
+      {/* nav + sessions */}
       <div
         className="lex-scroll"
         style={{
@@ -179,91 +248,182 @@ export function Sidebar({ module, role, onNavigate, onSetRole, onNewChat }: Side
           padding: collapsed ? "4px 9px" : "4px 12px",
         }}
       >
-        {NAV_ORDER.map((key) => {
-          const active = key === module;
-          return (
+        {PRIMARY_NAV.map((key) => (
+          <NavButton
+            key={key}
+            k={key}
+            active={key === module && activeSessionId === null}
+            collapsed={collapsed}
+            onClick={() => onNavigate(key)}
+          />
+        ))}
+
+        {/* More — the rest of the modules, hidden by default */}
+        {!collapsed && (
+          <>
             <button
-              key={key}
-              onClick={() => onNavigate(key)}
-              title={MODULES[key].title}
+              onClick={() => setShowMore((s) => !s)}
               style={{
                 width: "100%",
                 textAlign: "left",
                 border: "none",
-                background: active ? "#eceae5" : "transparent",
+                background: "transparent",
                 borderRadius: 9,
-                padding: collapsed ? "10px 0" : "9px 11px",
+                padding: "9px 11px",
                 marginBottom: 2,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                justifyContent: collapsed ? "center" : "flex-start",
-                color: active ? "#1a1a1a" : "#5a564d",
+                color: "#8a8a85",
               }}
             >
-              <span style={{ flex: "none", display: "flex" }}>
-                <NavIcon k={key} />
+              <span style={{ fontSize: 9, width: 17, textAlign: "center", flex: "none" }}>
+                {showMore ? "▾" : "▸"}
               </span>
-              {!collapsed && (
-                <span
-                  style={{
-                    fontSize: 13.5,
-                    fontWeight: active ? 600 : 500,
-                    flex: 1,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {MODULES[key].title}
-                </span>
-              )}
-              {!collapsed && REVIEWER_ONLY[key] && (
-                <span
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 600,
-                    letterSpacing: ".06em",
-                    textTransform: "uppercase",
-                    color: "#9a6b18",
-                    background: "#f7efdd",
-                    borderRadius: 4,
-                    padding: "2px 5px",
-                    flex: "none",
-                  }}
-                >
-                  Reviewer
-                </span>
-              )}
+              <span style={{ fontSize: 13.5, fontWeight: 500 }}>More</span>
             </button>
-          );
-        })}
+            {showMore &&
+              MORE_NAV.map((key) => (
+                <NavButton
+                  key={key}
+                  k={key}
+                  active={key === module && activeSessionId === null}
+                  collapsed={collapsed}
+                  onClick={() => onNavigate(key)}
+                />
+              ))}
+          </>
+        )}
+
+        {/* divider + saved sessions */}
+        {!collapsed && (
+          <>
+            <div style={{ borderTop: "1px solid #e8e8e4", margin: "10px 4px 8px" }} />
+            {username ? (
+              sessions.length === 0 ? (
+                <div style={{ fontSize: 12, color: "#b4b4ae", padding: "6px 11px", lineHeight: 1.5 }}>
+                  Your chats will appear here.
+                </div>
+              ) : (
+                sessions.map((s) => {
+                  const active = s.id === activeSessionId;
+                  return (
+                    <div
+                      key={s.id}
+                      onMouseEnter={() => setHovered(s.id)}
+                      onMouseLeave={() => setHovered((h) => (h === s.id ? null : h))}
+                      style={{ position: "relative" }}
+                    >
+                      <button
+                        onClick={() => onLoadSession(s.id)}
+                        title={s.title}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          border: "none",
+                          background: active ? "#eceae5" : "transparent",
+                          borderRadius: 9,
+                          padding: "8px 11px",
+                          paddingRight: 30,
+                          marginBottom: 1,
+                          cursor: "pointer",
+                          color: active ? "#1a1a1a" : "#5a564d",
+                          fontSize: 13,
+                          fontWeight: active ? 600 : 500,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          display: "block",
+                        }}
+                      >
+                        {s.title}
+                      </button>
+                      {(hovered === s.id || active) && (
+                        <button
+                          onClick={() => onDeleteSession(s.id)}
+                          title="Delete chat"
+                          style={{
+                            position: "absolute",
+                            top: 6,
+                            right: 6,
+                            width: 22,
+                            height: 22,
+                            border: "none",
+                            background: "none",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            color: "#a8a8a2",
+                            fontSize: 14,
+                            lineHeight: 1,
+                          }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )
+            ) : (
+              <div style={{ fontSize: 12, color: "#b4b4ae", padding: "6px 11px", lineHeight: 1.5 }}>
+                Choose a username to save your chat history.
+              </div>
+            )}
+          </>
+        )}
       </div>
 
-      {/* role switcher (only when expanded) */}
+      {/* identity footer */}
       {!collapsed && (
-        <div style={{ flex: "none", padding: 14, borderTop: "1px solid #f0f0ee" }}>
-          <div
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              letterSpacing: ".1em",
-              textTransform: "uppercase",
-              color: "#b4b4ae",
-              marginBottom: 8,
-              paddingLeft: 2,
-            }}
-          >
-            View as
+        <div style={{ flex: "none", padding: 12, borderTop: "1px solid #f0f0ee" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div
+              style={{
+                flex: "none",
+                width: 30,
+                height: 30,
+                borderRadius: "50%",
+                background: username ? "#1a1a1a" : "#d6d6d0",
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              {username ? username[0].toUpperCase() : "?"}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "#b4b4ae" }}>
+                Signed in as
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#1a1a1a",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {username ? `@${username}` : "Unknown"}
+              </div>
+            </div>
           </div>
-          <div style={{ display: "flex", background: "#f0efec", borderRadius: 9, padding: 3 }}>
-            <RoleButton active={!isReviewer} onClick={() => onSetRole("staff")}>
-              Staff
-            </RoleButton>
-            <RoleButton active={isReviewer} onClick={() => onSetRole("reviewer")}>
-              Reviewer
-            </RoleButton>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={onSwitchUser} title="Change username" style={footerBtn}>
+              Switch
+            </button>
+            <button
+              onClick={onSignOut}
+              title="Sign out and re-enter the passcode"
+              style={{ ...footerBtn, color: "#b0453a", borderColor: "#f0dcd8" }}
+            >
+              Sign out
+            </button>
           </div>
         </div>
       )}
@@ -285,32 +445,14 @@ const iconBtn: React.CSSProperties = {
   justifyContent: "center",
 };
 
-function RoleButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        flex: 1,
-        border: "none",
-        borderRadius: 7,
-        padding: "7px 0",
-        fontSize: 12.5,
-        fontWeight: 600,
-        cursor: "pointer",
-        background: active ? "#fff" : "transparent",
-        color: active ? "#1a1a1a" : "#8a8a85",
-        boxShadow: active ? "0 1px 2px rgba(0,0,0,.12)" : "none",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
+const footerBtn: React.CSSProperties = {
+  flex: 1,
+  border: "1px solid #e0e0db",
+  background: "#fff",
+  borderRadius: 8,
+  fontSize: 12,
+  fontWeight: 600,
+  color: "#5a564d",
+  padding: "6px 10px",
+  cursor: "pointer",
+};

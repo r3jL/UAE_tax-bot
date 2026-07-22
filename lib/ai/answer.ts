@@ -134,8 +134,11 @@ export async function answerQuestion(
   opts: {
     taxType?: "CT" | "VAT";
     attachedDocs?: { name: string; text: string }[];
+    // Identity, so an escalation can be routed back to the asker's session.
+    username?: string | null;
+    sessionId?: number | null;
   } = {},
-): Promise<AnswerContract & { retrievedChunkIds: number[] }> {
+): Promise<AnswerContract & { retrievedChunkIds: number[]; queryLogId?: number }> {
   // The user's own uploaded files (contract, invoice, notice…) as extra context.
   const attached = opts.attachedDocs ?? [];
   const attachedSection = attached.length
@@ -250,24 +253,33 @@ export async function answerQuestion(
   const retrievedChunkIds = chunks.map((c) => c.id);
 
   // Best-effort audit log; never block the response on a logging failure.
+  let queryLogId: number | undefined;
   try {
-    await db.insert(queryLog).values({
-      question,
-      answer: result.answer,
-      status: result.status,
-      confidence: result.confidence,
-      taxType: opts.taxType ?? null,
-      // Only escalations carry a reason; answered rows store null. This is what
-      // the Review Queue shows reviewers, so persist it alongside the question.
-      escalationReason:
-        result.status === "escalate" ? result.escalationReason ?? null : null,
-      retrievedChunkIds,
-      citations: result.citations,
-      computation: calc,
-    });
+    const [row] = await db
+      .insert(queryLog)
+      .values({
+        question,
+        answer: result.answer,
+        status: result.status,
+        confidence: result.confidence,
+        taxType: opts.taxType ?? null,
+        // Only escalations carry a reason; answered rows store null. This is what
+        // the Review Queue shows reviewers, so persist it alongside the question.
+        escalationReason:
+          result.status === "escalate" ? result.escalationReason ?? null : null,
+        retrievedChunkIds,
+        citations: result.citations,
+        computation: calc,
+        // Route-back identity: an escalation is only actionable in the Review
+        // Queue when it carries a username + session to return the answer to.
+        username: opts.username ?? null,
+        sessionId: opts.sessionId ?? null,
+      })
+      .returning({ id: queryLog.id });
+    queryLogId = row?.id;
   } catch (e) {
     console.warn("[answer] query_log insert failed:", (e as Error).message);
   }
 
-  return { ...result, retrievedChunkIds };
+  return { ...result, retrievedChunkIds, queryLogId };
 }

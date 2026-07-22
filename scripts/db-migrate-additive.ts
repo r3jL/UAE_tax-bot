@@ -121,8 +121,68 @@ async function main() {
       ON query_log (status, created_at)
   `;
 
+  // --- Usernames, session history, review-answer routing, notifications ---
+  // chat_sessions: a saved thread owned by a username (guests get none).
+  await sql`
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+      id serial PRIMARY KEY,
+      username varchar(64) NOT NULL,
+      title text NOT NULL DEFAULT 'New chat',
+      created_at timestamp DEFAULT now(),
+      updated_at timestamp DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS chat_sessions_user_idx
+      ON chat_sessions (username, updated_at)
+  `;
+
+  // chat_messages: one turn in a session (user | assistant | reviewer).
+  await sql`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id serial PRIMARY KEY,
+      session_id integer NOT NULL REFERENCES chat_sessions(id),
+      role varchar(16) NOT NULL,
+      content text NOT NULL DEFAULT '',
+      data jsonb,
+      created_at timestamp DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS chat_messages_session_idx
+      ON chat_messages (session_id, created_at)
+  `;
+
+  // notifications: "your question was answered" pings for the asker.
+  await sql`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id serial PRIMARY KEY,
+      username varchar(64) NOT NULL,
+      session_id integer NOT NULL REFERENCES chat_sessions(id),
+      message_id integer,
+      query_log_id integer,
+      title text NOT NULL,
+      read varchar(4) NOT NULL DEFAULT 'no',
+      created_at timestamp DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS notifications_user_idx
+      ON notifications (username, read, created_at)
+  `;
+
+  // query_log: who asked + where, and the reviewer's sent-back answer.
+  await sql`
+    ALTER TABLE query_log
+      ADD COLUMN IF NOT EXISTS username varchar(64),
+      ADD COLUMN IF NOT EXISTS session_id integer,
+      ADD COLUMN IF NOT EXISTS reviewer_answer text,
+      ADD COLUMN IF NOT EXISTS reviewed_by varchar(64),
+      ADD COLUMN IF NOT EXISTS reviewed_at timestamp
+  `;
+
   console.log(
-    "Additive migration applied: lifecycle columns, law_changes, tax_parameters, query_log review-queue fields.",
+    "Additive migration applied: lifecycle columns, law_changes, tax_parameters, query_log review-queue fields, chat_sessions, chat_messages, notifications.",
   );
   process.exit(0);
 }

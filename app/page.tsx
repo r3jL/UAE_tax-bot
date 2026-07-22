@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Sidebar } from "./_components/sidebar";
 import { PlannedModules } from "./_components/planned-modules";
-import { Drawer } from "./_components/drawer";
 import { Markdown } from "./_components/markdown";
+import { UsernameGate } from "./_components/username-gate";
+import { NotificationBell } from "./_components/notification-bell";
 import {
   CONF_MAP,
   SERIF,
@@ -13,23 +14,78 @@ import {
   type AnswerResult,
   type Message,
   type ModuleKey,
-  type QueueItem,
-  type Role,
+  type NotificationItem,
+  type SessionSummary,
   type TaxFilter,
 } from "./_lib/lex-data";
 
+// Map a persisted session's rows back into the thread's Message shape.
+function rowsToMessages(
+  rows: { id: number; role: string; content: string; data: unknown }[],
+): Message[] {
+  return rows.map((r) => {
+    const data = (r.data ?? {}) as Record<string, unknown>;
+    if (r.role === "assistant") {
+      return { role: "assistant", resp: r.data as AnswerResult, showReasoning: false };
+    }
+    if (r.role === "reviewer") {
+      return {
+        role: "reviewer",
+        text: r.content,
+        from: typeof data.reviewedBy === "string" ? data.reviewedBy : undefined,
+        messageId: r.id,
+      };
+    }
+    const files = Array.isArray(data.files) ? (data.files as string[]) : undefined;
+    return { role: "user", text: r.content, files: files?.length ? files : undefined };
+  });
+}
+
 export default function Workspace() {
   const [module, setModule] = useState<ModuleKey>("ask");
-  const [role, setRole] = useState<Role>("staff");
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<TaxFilter>("All");
   const [loading, setLoading] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState("Reviewing FTA law");
   const [files, setFiles] = useState<File[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [drawer, setDrawer] = useState<QueueItem | null>(null);
+
+  // Identity + saved history.
+  const [username, setUsername] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<boolean | null>(null); // null = still checking
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
 
   const threadRef = useRef<HTMLDivElement>(null);
+
+  // Bootstrap identity: has the user picked a username or guest yet?
+  useEffect(() => {
+    let active = true;
+    fetch("/api/user")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!active) return;
+        setUsername(d.username ?? null);
+        setChosen(!!d.chosen);
+      })
+      .catch(() => active && setChosen(true)); // fail open — never block the app
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const refreshSessions = useCallback(() => {
+    fetch("/api/sessions")
+      .then((r) => r.json())
+      .then((d) => setSessions(d.sessions ?? []))
+      .catch(() => {});
+  }, []);
+
+  // Load history when a username is present. Guests keep the empty initial list;
+  // switchUser() clears it explicitly, so no synchronous reset is needed here.
+  useEffect(() => {
+    if (username) refreshSessions();
+  }, [username, refreshSessions]);
 
   // Keep the thread pinned to the latest message, like the comp.
   useEffect(() => {
@@ -68,18 +124,25 @@ export default function Workspace() {
         const fd = new FormData();
         fd.append("question", trimmed);
         if (taxType) fd.append("taxType", taxType);
+        if (activeSessionId) fd.append("sessionId", String(activeSessionId));
         attached.forEach((f) => fd.append("files", f));
         res = await fetch("/api/chat", { method: "POST", body: fd });
       } else {
         res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: trimmed, taxType }),
+          body: JSON.stringify({ question: trimmed, taxType, sessionId: activeSessionId }),
         });
       }
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error ?? "Request failed");
       resp = data as AnswerResult;
+      // The server persists the turn for signed-in users and returns the session
+      // it saved to; track it so follow-ups append, and refresh the sidebar.
+      if (typeof data.sessionId === "number") {
+        setActiveSessionId(data.sessionId);
+        refreshSessions();
+      }
     } catch (err) {
       if (attached.length) {
         // For a document question, a canned sample would be nonsense — surface
@@ -128,7 +191,6 @@ export default function Workspace() {
 
   function go(key: ModuleKey) {
     setModule(key);
-    setDrawer(null);
   }
 
   function newChat() {
@@ -136,7 +198,63 @@ export default function Workspace() {
     setMessages([]);
     setQ("");
     setFiles([]);
-    setDrawer(null);
+    setActiveSessionId(null);
+  }
+
+  // Load a saved thread into the Ask view — including any reviewer answer that
+  // was sent back into it.
+  async function loadSession(id: number) {
+    setModule("ask");
+    setQ("");
+    setFiles([]);
+    try {
+      const res = await fetch(`/api/sessions/${id}`, { cache: "no-store" });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setMessages(rowsToMessages(data.messages ?? []));
+      setActiveSessionId(id);
+    } catch {
+      /* session may have been deleted — ignore */
+    }
+  }
+
+  async function deleteSession(id: number) {
+    if (!window.confirm("Delete this chat? This can’t be undone.")) return;
+    if (activeSessionId === id) newChat();
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    try {
+      await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+    } catch {
+      refreshSessions();
+    }
+  }
+
+  // Clicking a notification opens the session the answer landed in.
+  function openNotification(n: NotificationItem) {
+    void loadSession(n.sessionId);
+  }
+
+  async function switchUser() {
+    try {
+      await fetch("/api/user", { method: "DELETE" });
+    } catch {
+      /* ignore */
+    }
+    setUsername(null);
+    setSessions([]);
+    setActiveSessionId(null);
+    setMessages([]);
+    setChosen(false); // re-show the identity gate
+  }
+
+  // End the session: clear the passcode cookie and go back to the PIN screen.
+  async function signOut() {
+    try {
+      await fetch("/api/auth", { method: "DELETE" });
+    } catch {
+      /* ignore */
+    }
+    window.location.href = "/login";
   }
 
   const empty = messages.length === 0 && !loading;
@@ -165,10 +283,15 @@ export default function Workspace() {
     >
       <Sidebar
         module={module}
-        role={role}
         onNavigate={go}
-        onSetRole={setRole}
         onNewChat={newChat}
+        username={username}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onLoadSession={loadSession}
+        onDeleteSession={deleteSession}
+        onSwitchUser={switchUser}
+        onSignOut={signOut}
       />
 
       <div
@@ -180,6 +303,20 @@ export default function Workspace() {
           overflow: "hidden",
         }}
       >
+        {/* top bar — notification bell (signed-in users only) */}
+        <div
+          style={{
+            flex: "none",
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            padding: "10px 16px 0",
+            minHeight: 20,
+          }}
+        >
+          <NotificationBell username={username} onOpen={openNotification} />
+        </div>
+
         <div
           style={{
             flex: 1,
@@ -227,6 +364,8 @@ export default function Workspace() {
                     {messages.map((m, i) =>
                       m.role === "user" ? (
                         <UserMessage key={i} text={m.text} files={m.files} first={i === 0} />
+                      ) : m.role === "reviewer" ? (
+                        <ReviewerMessage key={i} text={m.text} from={m.from} />
                       ) : (
                         <AssistantMessage
                           key={i}
@@ -257,12 +396,19 @@ export default function Workspace() {
               </>
             )
           ) : (
-            <PlannedModules module={module} isReviewer={role === "reviewer"} />
+            <PlannedModules module={module} hasUsername={!!username} />
           )}
         </div>
       </div>
 
-      <Drawer item={drawer} onClose={() => setDrawer(null)} />
+      {chosen === false && (
+        <UsernameGate
+          onChosen={(u) => {
+            setUsername(u);
+            setChosen(true);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -561,6 +707,53 @@ function AssistantMessage({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// A human answer sent back from the Review Queue, shown inline in the thread.
+function ReviewerMessage({ text, from }: { text: string; from?: string }) {
+  return (
+    <div style={{ margin: "18px 0 30px", animation: "lexrise .35s ease both" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 10,
+        }}
+      >
+        <span
+          style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".13em", color: "#2f7a52" }}
+        >
+          REVIEWER
+        </span>
+        {from && <span style={{ fontSize: 12.5, color: "#8a8a85" }}>@{from}</span>}
+        <span
+          style={{
+            fontSize: 10.5,
+            fontWeight: 600,
+            letterSpacing: ".05em",
+            textTransform: "uppercase",
+            color: "#2f7a52",
+            background: "#eaf3ee",
+            borderRadius: 99,
+            padding: "2px 8px",
+          }}
+        >
+          Human answer
+        </span>
+      </div>
+      <div
+        style={{
+          borderLeft: "2px solid #2f7a52",
+          padding: "2px 0 2px 16px",
+        }}
+      >
+        <Markdown serif size={16.5}>
+          {text}
+        </Markdown>
+      </div>
     </div>
   );
 }

@@ -6,10 +6,10 @@ import { ReviewQueueModule } from "./review-queue-module";
 
 interface PlannedModulesProps {
   module: Exclude<ModuleKey, "ask">;
-  isReviewer: boolean;
+  hasUsername: boolean;
 }
 
-export function PlannedModules({ module, isReviewer }: PlannedModulesProps) {
+export function PlannedModules({ module, hasUsername }: PlannedModulesProps) {
   const meta = MODULES[module];
 
   return (
@@ -36,11 +36,11 @@ export function PlannedModules({ module, isReviewer }: PlannedModulesProps) {
         {module === "invoice" ? (
           <InvoiceModule />
         ) : module === "queue" ? (
-          // Tab is visible to everyone, but only Reviewers see the data. Staff
-          // get a locked screen; the module (and its data fetch) never mounts
-          // for them. POC gate — driven by the role toggle, not real auth.
-          isReviewer ? (
-            <ReviewQueueModule />
+          // The queue works only with a username — answers need someone to send
+          // them back to. Guests get a locked screen; the module (and its data
+          // fetch) never mounts for them.
+          hasUsername ? (
+            <ReviewQueueModule hasUsername={hasUsername} />
           ) : (
             <Restricted />
           )
@@ -52,8 +52,8 @@ export function PlannedModules({ module, isReviewer }: PlannedModulesProps) {
   );
 }
 
-// Locked screen shown to non-Reviewers on a reviewer-only tab. The tab is
-// visible to everyone (so staff know it exists), but the data stays hidden.
+// Locked screen shown to guests. The Review Queue routes human answers back to
+// a specific person, so it needs a username to work.
 function Restricted() {
   return (
     <div
@@ -71,11 +71,11 @@ function Restricted() {
       <div style={{ textAlign: "center", maxWidth: 380 }}>
         <div style={{ fontSize: 30, lineHeight: 1, marginBottom: 10 }}>🔒</div>
         <div style={{ fontFamily: SERIF, fontSize: 21, fontWeight: 600 }}>
-          Reviewers only
+          Choose a username first
         </div>
         <div style={{ fontSize: 13.5, color: "#6b6b66", marginTop: 8, lineHeight: 1.6 }}>
-          Escalated questions are visible to Finance Reviewers. Switch to the{" "}
-          <strong>Reviewer</strong> view to see the queue.
+          The Review Queue sends answers back to whoever asked, so it needs a
+          username. Use <strong>Switch</strong> at the top of the sidebar to pick one.
         </div>
       </div>
     </div>
