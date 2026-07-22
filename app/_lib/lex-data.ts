@@ -52,7 +52,21 @@ export type Message =
   | { role: "user"; text: string; files?: string[] }
   | { role: "assistant"; resp: AnswerResult; showReasoning: boolean }
   // A human answer sent back from the Review Queue into this thread.
-  | { role: "reviewer"; text: string; from?: string; messageId?: number };
+  | { role: "reviewer"; text: string; from?: string; messageId?: number }
+  // An inline invoice VAT check (the merged Ask+Invoice workspace). Progresses
+  // extracting → review (editable fields) → determining → done; "error" keeps
+  // the card with a message instead of losing the upload.
+  | {
+      role: "invoice";
+      // Client-side key for in-place updates while the flow progresses.
+      // Absent on cards reloaded from history (no further interaction).
+      uid?: number;
+      fileName: string;
+      phase: "extracting" | "review" | "determining" | "done" | "error";
+      fields?: InvoiceFieldsData;
+      det?: Determination;
+      error?: string;
+    };
 
 // A saved chat session shown in the sidebar (from GET /api/sessions).
 export interface SessionSummary {
@@ -252,7 +266,7 @@ export interface ModuleMeta {
 }
 
 export const MODULES: Record<ModuleKey, ModuleMeta> = {
-  ask: { title: "Ask", sub: "Cited Q&A", desc: "" },
+  ask: { title: "Ask", sub: "Q&A + invoice checks", desc: "" },
   vendor: {
     title: "Vendor VAT Check",
     sub: "Transaction treatment",
@@ -290,9 +304,10 @@ export const MODULES: Record<ModuleKey, ModuleMeta> = {
   },
 };
 
+// "invoice" is intentionally absent: invoice checks now live inline in the
+// Ask thread (the merged workspace), not behind their own tab.
 export const NAV_ORDER: ModuleKey[] = [
   "ask",
-  "invoice",
   "queue",
   "vendor",
   "register",
@@ -303,7 +318,7 @@ export const NAV_ORDER: ModuleKey[] = [
 
 // Claude-style sidebar: a few primary modules always visible, the rest tucked
 // under an expandable "More".
-export const PRIMARY_NAV: ModuleKey[] = ["ask", "invoice", "queue", "vendor"];
+export const PRIMARY_NAV: ModuleKey[] = ["ask", "queue", "vendor"];
 export const MORE_NAV: ModuleKey[] = ["register", "alerts", "history", "reports"];
 
 export const REVIEWER_ONLY: Partial<Record<ModuleKey, boolean>> = { queue: true };

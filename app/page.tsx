@@ -8,16 +8,20 @@ import { UsernameGate } from "./_components/username-gate";
 import { NotificationBell } from "./_components/notification-bell";
 import {
   CONF_MAP,
+  SAMPLE_INVOICE,
   SERIF,
   filterToTaxType,
   resolveSample,
   type AnswerResult,
+  type Determination,
+  type InvoiceFieldsData,
   type Message,
   type ModuleKey,
   type NotificationItem,
   type SessionSummary,
   type TaxFilter,
 } from "./_lib/lex-data";
+import { DeterminationCard, InvoiceFieldsCard, Spinner } from "./_components/invoice-cards";
 
 // Map a persisted session's rows back into the thread's Message shape.
 function rowsToMessages(
@@ -26,6 +30,16 @@ function rowsToMessages(
   return rows.map((r) => {
     const data = (r.data ?? {}) as Record<string, unknown>;
     if (r.role === "assistant") {
+      // A persisted inline invoice check reloads as a completed invoice card.
+      if (data.type === "invoice") {
+        return {
+          role: "invoice",
+          fileName: typeof data.fileName === "string" ? data.fileName : "invoice",
+          phase: "done",
+          fields: data.fields as InvoiceFieldsData | undefined,
+          det: data.det as Determination | undefined,
+        };
+      }
       return { role: "assistant", resp: r.data as AnswerResult, showReasoning: false };
     }
     if (r.role === "reviewer") {
@@ -189,6 +203,120 @@ export default function Workspace() {
     }
   }
 
+  // ── Inline invoice VAT checks (the merged Ask+Invoice workspace) ──────────
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+
+  // Monotonic client-side key so in-flight cards can be updated in place
+  // regardless of React's update batching.
+  const invoiceUid = useRef(0);
+
+  function patchInvoiceMsg(uid: number, patch: Partial<Extract<Message, { role: "invoice" }>>) {
+    setMessages((prev) =>
+      prev.map((m) => (m.role === "invoice" && m.uid === uid ? { ...m, ...patch } : m)),
+    );
+  }
+
+  async function checkOneInvoice(file: File) {
+    const uid = ++invoiceUid.current;
+    setMessages((m) => [
+      ...m,
+      { role: "user", text: `VAT check: ${file.name}`, files: [file.name] },
+      { role: "invoice", uid, fileName: file.name, phase: "extracting" },
+    ]);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/invoice/extract", {
+        method: "POST",
+        body: fd,
+        signal: AbortSignal.timeout(70_000),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error ?? "Extraction failed");
+      patchInvoiceMsg(uid, { phase: "review", fields: data as InvoiceFieldsData });
+    } catch (e) {
+      patchInvoiceMsg(uid, {
+        phase: "error",
+        error:
+          (e as Error)?.message || "I couldn't read that file. Please try another copy.",
+      });
+    }
+  }
+
+  // "Check VAT" on the staged files: each becomes its own card, sequentially
+  // (spaced to stay under free-tier per-minute limits).
+  async function runInvoiceChecks() {
+    const staged = files;
+    if (!staged.length || loading || invoiceBusy) return;
+    setFiles([]);
+    setInvoiceBusy(true);
+    try {
+      for (let i = 0; i < staged.length; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 2500));
+        await checkOneInvoice(staged[i]);
+      }
+    } finally {
+      setInvoiceBusy(false);
+    }
+  }
+
+  // Confirm & run: the fields card's button. Persists to the session so the
+  // check reloads with history and follow-up questions can reference it.
+  async function runDetermination(target: Extract<Message, { role: "invoice" }>) {
+    if (target.uid == null || !target.fields) return;
+    patchInvoiceMsg(target.uid, { phase: "determining", error: undefined });
+    setInvoiceBusy(true);
+    try {
+      const res = await fetch("/api/invoice/determine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: target.fields,
+          fileName: target.fileName,
+          sessionId: activeSessionId,
+        }),
+        signal: AbortSignal.timeout(75_000),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error ?? "Determination failed");
+      patchInvoiceMsg(target.uid, { phase: "done", det: data as Determination });
+      if (typeof data.sessionId === "number") {
+        setActiveSessionId(data.sessionId);
+        refreshSessions();
+      }
+    } catch (e) {
+      // Keep the editable card so the user can retry — don't lose their edits.
+      patchInvoiceMsg(target.uid, {
+        phase: "review",
+        error: (e as Error)?.message || "The check failed — please try again.",
+      });
+    } finally {
+      setInvoiceBusy(false);
+    }
+  }
+
+  function editInvoiceField(target: Extract<Message, { role: "invoice" }>) {
+    return <K extends keyof InvoiceFieldsData>(k: K, v: InvoiceFieldsData[K]) => {
+      if (target.uid == null || !target.fields) return;
+      patchInvoiceMsg(target.uid, { fields: { ...target.fields, [k]: v } });
+    };
+  }
+
+  // Demo: a canned invoice + determination, no upload or model call.
+  function loadSampleInvoice() {
+    setMessages((m) => [
+      ...m,
+      { role: "user", text: "VAT check: sample_invoice.pdf (demo)", files: ["sample_invoice.pdf"] },
+      {
+        role: "invoice",
+        fileName: "sample_invoice.pdf",
+        phase: "done",
+        fields: SAMPLE_INVOICE.fields,
+        det: SAMPLE_INVOICE.determination,
+      },
+    ]);
+  }
+
   function go(key: ModuleKey) {
     setModule(key);
   }
@@ -262,12 +390,13 @@ export default function Workspace() {
   const composerEl = (
     <Composer
       q={q}
-      loading={loading}
+      loading={loading || invoiceBusy}
       files={files}
       onQ={setQ}
       onFiles={setFiles}
       onKeyDown={onKeyDown}
       onAsk={ask}
+      onCheckVat={runInvoiceChecks}
     />
   );
 
@@ -353,7 +482,24 @@ export default function Workspace() {
                   How can I help with UAE tax?
                 </h1>
                 {composerEl}
-                <div style={{ fontSize: 11, color: "#cbcbc4", marginTop: 18, textAlign: "center" }}>
+                <button
+                  onClick={loadSampleInvoice}
+                  style={{
+                    marginTop: 16,
+                    border: "1px solid #e6e6e2",
+                    borderRadius: 99,
+                    background: "#fff",
+                    color: "#5a564d",
+                    fontSize: 12.5,
+                    fontWeight: 500,
+                    padding: "7px 16px",
+                    cursor: "pointer",
+                  }}
+                >
+                  🧾 Try a sample invoice (demo)
+                </button>
+                <div style={{ fontSize: 11, color: "#cbcbc4", marginTop: 14, textAlign: "center" }}>
+                  Ask a question, or attach an invoice and run a VAT check — all in one thread.
                   Decision-support only — a human reviews before use.
                 </div>
               </div>
@@ -366,6 +512,13 @@ export default function Workspace() {
                         <UserMessage key={i} text={m.text} files={m.files} first={i === 0} />
                       ) : m.role === "reviewer" ? (
                         <ReviewerMessage key={i} text={m.text} from={m.from} />
+                      ) : m.role === "invoice" ? (
+                        <InvoiceCheckMessage
+                          key={m.uid ?? `h${i}`}
+                          msg={m}
+                          onField={m.phase === "review" ? editInvoiceField(m) : undefined}
+                          onRun={m.phase === "review" ? () => runDetermination(m) : undefined}
+                        />
                       ) : (
                         <AssistantMessage
                           key={i}
@@ -789,6 +942,84 @@ const FILE_ACCEPT =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,text/plain";
 
+// One inline invoice check in the thread: reading → confirm fields →
+// checking → cited treatment. Errors keep the card (and any edits) in place.
+function InvoiceCheckMessage({
+  msg,
+  onField,
+  onRun,
+}: {
+  msg: Extract<Message, { role: "invoice" }>;
+  onField?: <K extends keyof InvoiceFieldsData>(k: K, v: InvoiceFieldsData[K]) => void;
+  onRun?: () => void;
+}) {
+  return (
+    <div style={{ margin: "0 0 22px", display: "grid", gap: 12 }}>
+      {msg.phase === "extracting" && (
+        <div
+          style={{
+            border: "1px solid #ececea",
+            borderRadius: 14,
+            padding: 18,
+            fontSize: 14,
+            color: "#9a9a93",
+            display: "flex",
+            alignItems: "center",
+            gap: 9,
+          }}
+        >
+          <Spinner /> Reading {msg.fileName}…
+        </div>
+      )}
+
+      {msg.phase === "error" && (
+        <div
+          style={{
+            border: "1px solid #f0dedb",
+            background: "#fdf7f6",
+            borderRadius: 14,
+            padding: 18,
+            fontSize: 13.5,
+            color: "#b0453a",
+            lineHeight: 1.55,
+          }}
+        >
+          {msg.error ?? "Something went wrong reading this file."}
+        </div>
+      )}
+
+      {msg.fields && msg.phase !== "extracting" && msg.phase !== "error" && (
+        <>
+          {msg.error && (
+            <div style={{ fontSize: 12.5, color: "#b0453a" }}>{msg.error}</div>
+          )}
+          <InvoiceFieldsCard
+            fields={msg.fields}
+            fileName={msg.fileName}
+            determining={msg.phase === "determining"}
+            onField={onField}
+            onRun={onRun}
+          />
+          {msg.phase === "determining" && (
+            <div
+              style={{
+                fontSize: 13.5,
+                color: "#9a9a93",
+                display: "flex",
+                alignItems: "center",
+                gap: 9,
+              }}
+            >
+              <Spinner /> Retrieving the relevant VAT provisions…
+            </div>
+          )}
+          {msg.det && <DeterminationCard det={msg.det} />}
+        </>
+      )}
+    </div>
+  );
+}
+
 function Composer({
   q,
   loading,
@@ -797,6 +1028,7 @@ function Composer({
   onFiles,
   onKeyDown,
   onAsk,
+  onCheckVat,
 }: {
   q: string;
   loading: boolean;
@@ -805,6 +1037,7 @@ function Composer({
   onFiles: React.Dispatch<React.SetStateAction<File[]>>;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onAsk: () => void;
+  onCheckVat: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -1024,6 +1257,32 @@ function Composer({
                 transition: "height .12s ease",
               }}
             />
+
+            {files.length > 0 && (
+              <button
+                type="button"
+                onClick={onCheckVat}
+                disabled={loading}
+                title="Run the invoice VAT check on the attached file(s)"
+                style={{
+                  order: 2,
+                  marginLeft: multiline ? "auto" : 0,
+                  flex: "none",
+                  height: 34,
+                  border: "1px solid #1a1a1a",
+                  borderRadius: 99,
+                  background: "#fff",
+                  color: loading ? "#9a9a93" : "#1a1a1a",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  padding: "0 14px",
+                  cursor: loading ? "default" : "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Check VAT
+              </button>
+            )}
 
             <button
               onClick={onAsk}

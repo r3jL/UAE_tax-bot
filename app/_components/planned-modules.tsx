@@ -1,7 +1,6 @@
 "use client";
 
 import { MODULES, SERIF, type ModuleKey } from "../_lib/lex-data";
-import { InvoiceModule } from "./invoice-module";
 import { ReviewQueueModule } from "./review-queue-module";
 
 interface PlannedModulesProps {
@@ -33,9 +32,7 @@ export function PlannedModules({ module, hasUsername }: PlannedModulesProps) {
           </p>
         </div>
 
-        {module === "invoice" ? (
-          <InvoiceModule />
-        ) : module === "queue" ? (
+        {module === "queue" ? (
           // The queue works only with a username — answers need someone to send
           // them back to. Guests get a locked screen; the module (and its data
           // fetch) never mounts for them.

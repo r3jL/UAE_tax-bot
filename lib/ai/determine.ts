@@ -89,8 +89,11 @@ export async function determineVat(
   // Same structural guard as the answer engine: drop citations that don't map
   // to a retrieved chunk, then enrich them from the real chunk metadata (so the
   // article reference / source link are accurate, not whatever the model typed).
+  // "no ref" is the placeholder used in the prompt's context lines — models
+  // sometimes copy it verbatim into citations; treat it as empty so the real
+  // document title wins instead of a literal "no ref" in the UI.
   const firstOf = (...vals: (string | null | undefined)[]) =>
-    vals.find((v) => v && v.trim()) ?? "";
+    vals.find((v) => v && v.trim() && v.trim().toLowerCase() !== "no ref") ?? "";
   const byId = new Map(chunks.map((c) => [c.id, c]));
   const seen = new Set<number>();
   const citations = object.citations
