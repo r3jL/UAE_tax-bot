@@ -26,6 +26,10 @@ export interface RetrieveOpts {
   asOf?: Date;
   includeSuperseded?: boolean;
   jurisdiction?: string;
+  // Precomputed query embedding — skips the per-call embed request. Multi-query
+  // retrieval batches all sub-query embeddings into one embedMany call to stay
+  // under the Gateway free-tier rate limit.
+  embedding?: number[];
 }
 
 // The WHERE that enforces tax-type + lifecycle + temporal correctness. Used by
@@ -47,7 +51,8 @@ export async function retrieve(
   question: string,
   opts: RetrieveOpts = {},
 ): Promise<RetrievedChunk[]> {
-  const { embedding } = await embed({ model: EMBEDDING_MODEL, value: question });
+  const embedding =
+    opts.embedding ?? (await embed({ model: EMBEDDING_MODEL, value: question })).embedding;
 
   const similarity = sql<number>`1 - (${cosineDistance(lawChunks.embedding, embedding)})`;
 
@@ -102,7 +107,8 @@ export async function retrieveHybrid(
   };
 
   // 1. Semantic candidates (pgvector cosine).
-  const { embedding } = await embed({ model: EMBEDDING_MODEL, value: question });
+  const embedding =
+    opts.embedding ?? (await embed({ model: EMBEDDING_MODEL, value: question })).embedding;
   const similarity = sql<number>`1 - (${cosineDistance(lawChunks.embedding, embedding)})`;
   const vecRows = await db
     .select({ ...fields, similarity })

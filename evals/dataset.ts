@@ -61,4 +61,24 @@ export const EVAL_SET: EvalCase[] = [
     expectStatus: "escalate",
     note: "The UAE levies no personal income tax on salaries — the bot should flag the false premise or escalate, not invent a rate.",
   },
+  {
+    id: "ct-computation-xyz-scenario",
+    question:
+      "XYZ LLC (mainland UAE, not Small Business Relief, not in a Tax Group) has accounting profit before tax of AED 4,800,000 for the period ending 31 December 2025. Depreciation expense AED 450,000 vs tax depreciation allowable AED 390,000; entertainment expenses AED 240,000; donations to an unapproved foreign charity AED 150,000; exempt dividend income from a 30% UAE shareholding AED 500,000; net interest expense AED 900,000 with EBITDA of AED 2,900,000; carried-forward tax losses AED 700,000. Calculate the taxable income and the final Corporate Tax liability.",
+    taxType: "CT",
+    expectStatus: "answered",
+    // Deterministic calculator figures: taxable income 3,930,000 → tax 319,950.
+    expectMentions: ["319,950", "319950"],
+    note: "Exercises the computeCorporateTax tool: add-back signs, entertainment 50%, GIDLR safe harbour, 75% loss cap, 0%/9% bands.",
+  },
+  {
+    id: "vat-return-computation-scenario",
+    question:
+      "A VAT-registered UAE trader had these Q2 figures: local taxable sales AED 1,250,000 (exclusive of VAT); exports AED 730,000; local standard-rated purchases AED 850,000 + 5% VAT (all recoverable); imports under the reverse charge mechanism AED 400,000; client entertainment AED 18,000 + 5% VAT. Calculate the total output VAT, recoverable input VAT, and net VAT payable for the return.",
+    taxType: "VAT",
+    expectStatus: "answered",
+    // Output 62,500 + RCM 20,000 = 82,500; input 42,500 + 20,000 = 62,500 → net 20,000.
+    expectMentions: ["82,500", "82500"],
+    note: "Exercises the computeVatReturn tool: RCM both sides, blocked entertainment input VAT.",
+  },
 ];

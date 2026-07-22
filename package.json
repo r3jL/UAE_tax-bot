@@ -15,7 +15,8 @@
     "db:push": "drizzle-kit push",
     "db:seed-params": "tsx scripts/seed-parameters.ts",
     "ingest": "tsx scripts/ingest.ts",
-    "eval": "tsx scripts/eval.ts"
+    "eval": "tsx scripts/eval.ts",
+    "test": "tsx --test lib/tax/*.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.51",

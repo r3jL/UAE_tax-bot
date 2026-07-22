@@ -43,6 +43,10 @@ export async function rerank(
       model: RERANK_MODEL,
       schema: rankSchema,
       temperature: 0,
+      maxOutputTokens: 3000, // reasoning models think in output tokens first
+      // Bounded: a hung rerank must not eat the whole request budget — the
+      // fallback to vector order is always available.
+      abortSignal: AbortSignal.timeout(30_000),
       system: SYSTEM,
       prompt: `Question: ${question}\n\nCandidate passages:\n\n${list}\n\nReturn the relevant chunkIds, best first.`,
     });

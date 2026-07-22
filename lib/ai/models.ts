@@ -260,6 +260,23 @@ export const RERANK_MODEL =
 
 export const RERANK_ENABLED = (process.env.RERANK_ENABLED ?? "true") !== "false";
 
+// Calculator tool-calling phase — classifies a computational question's facts
+// and calls the deterministic tax calculators (lib/ai/tools.ts). Routed through
+// the Gateway by default for the same reason as DECOMPOSE_MODEL: it's a short
+// call whose failure degrades answer quality, and free hosts are unreliable at
+// tool calling. Override with CALC_MODEL (any Gateway slug).
+export const CALC_MODEL = process.env.CALC_MODEL ?? GATEWAY.reasoning;
+
+// Query decomposition — a small structured call that gates retrieval for every
+// multi-part question. Routed through the Vercel AI Gateway by default (same
+// reliability rationale as invoiceModel): free reasoning hosts spend 20s+
+// "thinking" or time out, and a slow decompose delays every answer behind it.
+// Override with DECOMPOSE_MODEL (any Gateway slug). Needs AI_GATEWAY_API_KEY.
+// Defaults to the Gateway's Sonnet slug, not Haiku: the Gateway FREE tier
+// gates Haiku ("Free tier users do not have access to this model") while
+// Sonnet works — same model invoice reading already relies on.
+export const DECOMPOSE_MODEL = process.env.DECOMPOSE_MODEL ?? GATEWAY.reasoning;
+
 // How many candidates to over-retrieve before reranking down to topK.
 export const RERANK_CANDIDATES = Number(process.env.RERANK_CANDIDATES ?? 24);
 
@@ -267,8 +284,8 @@ export const RERANK_CANDIDATES = Number(process.env.RERANK_CANDIDATES ?? 24);
 // search) candidate lists with Reciprocal Rank Fusion. Catches exact tokens
 // that pure vector search misses — article numbers ("Article 18(2)"), defined
 // terms (QFZP, designated zone), decree-law numbers, TRNs. DB path only.
-// Enable with HYBRID_ENABLED=true (default off → unchanged vector-only path).
-export const HYBRID_ENABLED = (process.env.HYBRID_ENABLED ?? "false") !== "false";
+// On by default; disable with HYBRID_ENABLED=false to fall back to vector-only.
+export const HYBRID_ENABLED = (process.env.HYBRID_ENABLED ?? "true") !== "false";
 
 // RRF constant k — dampens the contribution of lower-ranked items. 60 is the
 // canonical value from the original RRF paper; rarely needs tuning.

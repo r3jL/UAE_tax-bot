@@ -3,7 +3,9 @@ import { answerQuestion } from "@/lib/ai/answer";
 import { extractFileText } from "@/lib/ai/extract-text";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Multi-part questions now run decompose + multi-query retrieval + rerank
+// before the answer call — 60s is too tight on slow free-tier model hosts.
+export const maxDuration = 120;
 
 const MAX_BYTES = 4 * 1024 * 1024; // Vercel serverless body limit headroom
 const MAX_FILES = 4;

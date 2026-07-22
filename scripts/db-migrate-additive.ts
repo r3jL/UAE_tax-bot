@@ -113,7 +113,8 @@ async function main() {
   await sql`
     ALTER TABLE query_log
       ADD COLUMN IF NOT EXISTS tax_type varchar(16),
-      ADD COLUMN IF NOT EXISTS escalation_reason text
+      ADD COLUMN IF NOT EXISTS escalation_reason text,
+      ADD COLUMN IF NOT EXISTS computation jsonb
   `;
   await sql`
     CREATE INDEX IF NOT EXISTS query_log_status_idx

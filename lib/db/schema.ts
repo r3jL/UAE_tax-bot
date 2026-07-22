@@ -87,6 +87,9 @@ export const queryLog = pgTable(
     escalationReason: text("escalation_reason"),
     retrievedChunkIds: jsonb("retrieved_chunk_ids"),
     citations: jsonb("citations"),
+    // Deterministic calculator output (tool name, classified input, schedule)
+    // when the answer used one — the auditable ledger behind the numbers.
+    computation: jsonb("computation"),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => [

@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
-import { embed } from "ai";
+import { embed, embedMany } from "ai";
 import {
   EMBEDDING_MODEL,
   RERANK_ENABLED,
@@ -8,6 +8,7 @@ import {
   HYBRID_ENABLED,
 } from "../ai/models";
 import { rerank } from "./rerank";
+import { isMultiPart, decomposeQuestion } from "./decompose";
 import { SEED_CORPUS, type SeedChunk } from "./seed";
 
 // Unified context chunk shape used by the answer engine, regardless of source.
@@ -114,8 +115,10 @@ async function rankLocalIndex(
   question: string,
   taxType: "CT" | "VAT" | undefined,
   topK: number,
+  precomputed?: number[],
 ): Promise<ContextChunk[]> {
-  const { embedding } = await embed({ model: EMBEDDING_MODEL, value: question });
+  const embedding =
+    precomputed ?? (await embed({ model: EMBEDDING_MODEL, value: question })).embedding;
   const pool = taxType
     ? index.filter((e) => e.taxType === taxType || e.taxType === "GEN")
     : index;
@@ -142,23 +145,21 @@ async function rankLocalIndex(
     }));
 }
 
-// Returns grounded context for a question. Priority: database (pgvector) >
-// local embedded index (the ingested FTA PDFs) > hand-written seed corpus.
-export async function getRelevantChunks(
-  question: string,
-  opts: {
-    taxType?: "CT" | "VAT";
-    topK?: number;
-    asOf?: Date;
-    includeSuperseded?: boolean;
-  } = {},
-): Promise<ContextChunk[]> {
-  const topK = opts.topK ?? 8;
-  // Over-retrieve a wider candidate set, then let the reranker pick the best
-  // topK. Without reranking we just fetch topK directly (original behaviour).
-  const fetchK = RERANK_ENABLED ? Math.max(topK, RERANK_CANDIDATES) : topK;
+interface RetrieveChunkOpts {
+  taxType?: "CT" | "VAT";
+  topK?: number;
+  asOf?: Date;
+  includeSuperseded?: boolean;
+}
 
-  let candidates: ContextChunk[];
+// One retrieval pass for one query string, over whichever grounding source is
+// active: database (pgvector) > local embedded index > hand-written seed.
+async function retrieveOne(
+  query: string,
+  opts: RetrieveChunkOpts,
+  fetchK: number,
+  embedding?: number[],
+): Promise<ContextChunk[]> {
   if (process.env.DATABASE_URL) {
     const { retrieve, retrieveHybrid } = await import("./retrieve");
     const ropts = {
@@ -166,11 +167,12 @@ export async function getRelevantChunks(
       topK: fetchK,
       asOf: opts.asOf,
       includeSuperseded: opts.includeSuperseded,
+      embedding,
     };
     const rows = HYBRID_ENABLED
-      ? await retrieveHybrid(question, ropts)
-      : await retrieve(question, ropts);
-    candidates = rows.map((r) => ({
+      ? await retrieveHybrid(query, ropts)
+      : await retrieve(query, ropts);
+    return rows.map((r) => ({
       id: r.id,
       content: r.content,
       articleRef: r.articleRef,
@@ -183,15 +185,95 @@ export async function getRelevantChunks(
       instrument: r.instrument,
       docTitle: r.docTitle,
     }));
-  } else {
-    const index = loadLocalIndex();
-    candidates = index?.length
-      ? await rankLocalIndex(index, question, opts.taxType, fetchK)
-      : rankSeed(question, opts.taxType, fetchK);
+  }
+  const index = loadLocalIndex();
+  return index?.length
+    ? rankLocalIndex(index, query, opts.taxType, fetchK, embedding)
+    : rankSeed(query, opts.taxType, fetchK);
+}
+
+// Candidates fetched per sub-query in multi-query mode. Smaller than the
+// single-query pool because several lists are fused before reranking.
+const MULTI_QUERY_POOL = 10;
+// Cap on the fused candidate set handed to the reranker (prompt-size bound).
+const MULTI_QUERY_MAX_CANDIDATES = 32;
+
+// Returns grounded context for a question.
+//
+// Single-topic questions: one retrieval pass, then (optionally) rerank —
+// unchanged behaviour. Multi-part questions (detected structurally, split by a
+// cheap model): one retrieval pass PER sub-topic, fused with Reciprocal Rank
+// Fusion, then reranked against the ORIGINAL question. This is what stops an
+// 8-part scenario from retrieving 8 near-identical chunks about one sub-topic
+// and escalating over "missing" law that is actually in the corpus.
+export async function getRelevantChunks(
+  question: string,
+  opts: RetrieveChunkOpts = {},
+): Promise<ContextChunk[]> {
+  const topK = opts.topK ?? 8;
+
+  // Over-retrieve a wider candidate set, then let the reranker pick the best
+  // topK. Without reranking we just fetch topK directly (original behaviour).
+  const fetchK = RERANK_ENABLED ? Math.max(topK, RERANK_CANDIDATES) : topK;
+
+  // The anchor retrieval (full question) starts immediately; decomposition
+  // runs concurrently, so a slow or failed decompose adds no wall-clock beyond
+  // its own timeout — never serialized in front of retrieval.
+  const [anchor, subQueries] = await Promise.all([
+    retrieveOne(question, opts, fetchK),
+    isMultiPart(question) ? decomposeQuestion(question) : Promise.resolve([]),
+  ]);
+
+  if (subQueries.length < 2) {
+    if (RERANK_ENABLED && anchor.length > topK) {
+      return rerank(question, anchor, topK);
+    }
+    return anchor.slice(0, topK);
   }
 
-  if (RERANK_ENABLED && candidates.length > topK) {
-    return rerank(question, candidates, topK);
+  // Multi-query: the original question's list anchors the fusion so broad
+  // context still surfaces alongside each sub-topic's specific provisions.
+  // All sub-query embeddings come from ONE embedMany request — separate embed
+  // calls per sub-query trip the Gateway free-tier rate limit.
+  let subLists: ContextChunk[][] = [];
+  try {
+    const { embeddings } = await embedMany({
+      model: EMBEDDING_MODEL,
+      values: subQueries,
+    });
+    subLists = await Promise.all(
+      subQueries.map((q, i) =>
+        retrieveOne(q, opts, MULTI_QUERY_POOL, embeddings[i]).catch(() => []),
+      ),
+    );
+  } catch (e) {
+    // Batched embed failed (rate limit, outage) — the anchor list still stands.
+    console.warn("[multi-query] sub-query embedding failed:", (e as Error).message);
   }
-  return candidates.slice(0, topK);
+  const lists = [anchor.slice(0, MULTI_QUERY_POOL), ...subLists];
+
+  // Reciprocal Rank Fusion across the per-query lists (same scheme as hybrid
+  // retrieval): a chunk ranked well for several sub-topics beats one that is
+  // merely top for a single list.
+  const K = 60;
+  const fused = new Map<number, { chunk: ContextChunk; score: number }>();
+  for (const list of lists) {
+    list.forEach((chunk, i) => {
+      const inc = 1 / (K + i + 1);
+      const prev = fused.get(chunk.id);
+      if (prev) prev.score += inc;
+      else fused.set(chunk.id, { chunk, score: inc });
+    });
+  }
+  const candidates = [...fused.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MULTI_QUERY_MAX_CANDIDATES)
+    .map((f) => f.chunk);
+
+  // A multi-part question needs more final context than a single-topic one.
+  const finalK = Math.min(12, Math.max(topK, 2 * subQueries.length));
+  if (RERANK_ENABLED && candidates.length > finalK) {
+    return rerank(question, candidates, finalK);
+  }
+  return candidates.slice(0, finalK);
 }

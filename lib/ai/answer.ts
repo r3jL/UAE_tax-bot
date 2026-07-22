@@ -1,6 +1,7 @@
-import { generateObject } from "ai";
-import { REASONING_MODEL } from "./models";
+import { generateObject, generateText, stepCountIs } from "ai";
+import { CALC_MODEL, REASONING_MODEL } from "./models";
 import { answerContract, type AnswerContract } from "./contracts";
+import { taxCalculatorTools } from "./tools";
 import { getRelevantChunks } from "../rag/context";
 import { db } from "../db";
 import { queryLog } from "../db/schema";
@@ -23,7 +24,110 @@ NON-NEGOTIABLE RULES:
 
 ATTACHED DOCUMENTS: The user may upload their own document(s) — a contract, invoice, tax notice, etc. When present, their text appears under "ATTACHED DOCUMENT(S)" in the context. Use them to answer questions about their specifics, and apply the UAE tax provisions to them. You may quote the attached document directly. Ground any conclusion about the LAW in the provided provisions and cite their chunkId; facts that come only from the attached document don't need a chunkId. If a document is attached but unreadable or irrelevant to the question, say so plainly.
 
+COMPUTED SCHEDULE: When the context includes a "COMPUTED SCHEDULE" block, its numbers were produced by a deterministic calculator and are AUTHORITATIVE. Present those figures exactly as given — restate them, never recalculate, re-derive, or "correct" them. Surface every warning in the schedule to the user (as assumptions/caveats). Your own arithmetic is not trusted.
+
 You serve a real-estate group, so VAT on real estate (residential vs commercial, first vs subsequent supply) and Corporate Tax (Free Zone / QFZP, thresholds) come up a lot.`;
+
+// ── Calculator phase (Phase A) ────────────────────────────────────────────────
+// For computational questions, a short tool-calling pass classifies the facts
+// and runs the deterministic calculators BEFORE the answer is composed. Any
+// failure here degrades gracefully to the old behaviour (no schedule block).
+
+const CALC_INTENT =
+  /calculat|comput|liabilit|taxable income|payable|refundable|how much (tax|vat)|net vat|vat return|(final|total).{0,20}(tax|vat)/i;
+
+// Computational = has real amounts to work with AND asks for figures.
+function needsComputation(question: string): boolean {
+  return /\d[\d,]{2,}/.test(question) && CALC_INTENT.test(question);
+}
+
+const CALC_SYSTEM = `You extract the facts of a UAE tax computation question and call the right calculator tool. You NEVER do arithmetic yourself — your only job is classification:
+- Corporate Tax questions → computeCorporateTax. Classify each item: non-deductible expenses in accounting profit are add_back; exempt income (e.g. participation-exempt dividends) is exempt_income; pass entertainment and net interest via their dedicated fields, not as adjustments. If a figure needed for a sub-rule is absent (e.g. EBITDA), omit it — the tool reports what it could not compute.
+- SIGN DISCIPLINE: add_back is ONLY for expenses or losses already deducted in accounting profit — it INCREASES taxable income. An INCOME item (gain, dividend, revenue) is NEVER add_back: either leave it out entirely (it stays taxable, no adjustment) or classify it exempt_income/deduct to exclude it. Unrealised accounting gains stay taxable under the default accruals basis — make NO adjustment for them unless the question says a realisation-basis election applies (then: deduct).
+- VAT scenario/return questions → computeVatReturn. Categorise every supply and purchase; imports under reverse charge are category reverse_charge; entertainment and partly-personal vehicles are blocked/partial recovery.
+Use amounts EXACTLY as stated (net of VAT unless clearly stated otherwise). Call ONE tool once with everything, then stop — no commentary needed.`;
+
+interface CalcResult {
+  tool: string;
+  input: unknown;
+  output: unknown;
+}
+
+async function runCalculators(
+  question: string,
+  attachedSection: string,
+): Promise<CalcResult[] | null> {
+  try {
+    const res = await generateText({
+      model: CALC_MODEL,
+      tools: taxCalculatorTools,
+      stopWhen: stepCountIs(3),
+      temperature: 0,
+      abortSignal: AbortSignal.timeout(60_000),
+      system: CALC_SYSTEM,
+      prompt: `${question}${attachedSection}`,
+    });
+    const results: CalcResult[] = res.steps
+      .flatMap((s) => s.toolResults ?? [])
+      .map((tr) => ({ tool: tr.toolName, input: tr.input, output: tr.output }));
+    return results.length ? results : null;
+  } catch (e) {
+    console.warn("[calc] tool phase failed, answering without a schedule:", (e as Error).message);
+    return null;
+  }
+}
+
+// Deterministic markdown rendering of a computation — used when the model's
+// prose omits or mangles the authoritative figures.
+function renderComputation(r: CalcResult): string {
+  const o = r.output as Record<string, unknown> | null;
+  if (!o || typeof o !== "object" || "error" in o) return "";
+  const fmt = (n: unknown) =>
+    typeof n === "number" ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : String(n);
+  const lines: string[] = ["", "**Computed schedule (deterministic):**", ""];
+  if (r.tool === "computeCorporateTax") {
+    const sched = o.schedule as { label: string; amount: number; running: number }[];
+    lines.push("| Item | AED | Running |", "|---|---:|---:|");
+    for (const s of sched) lines.push(`| ${s.label} | ${fmt(s.amount)} | ${fmt(s.running)} |`);
+    lines.push(
+      `| **Taxable income** | | **${fmt(o.taxableIncome)}** |`,
+      `| **Corporate Tax due** | | **${fmt(o.taxDue)}** |`,
+    );
+  } else if (r.tool === "computeVatReturn") {
+    const b = o.boxes as Record<string, number>;
+    lines.push("| Return box | AED |", "|---|---:|");
+    lines.push(
+      `| Standard-rated supplies | ${fmt(b.standardRatedSupplies)} |`,
+      `| Zero-rated supplies | ${fmt(b.zeroRatedSupplies)} |`,
+      `| Output VAT (incl. reverse charge ${fmt(b.reverseChargeOutputVat)}) | ${fmt(b.totalOutputVat)} |`,
+      `| Recoverable input VAT | ${fmt(b.recoverableInputVat)} |`,
+      `| Blocked input VAT | ${fmt(b.blockedInputVat)} |`,
+      `| **Net VAT payable** | **${fmt(b.netVatPayable)}** |`,
+    );
+  }
+  const warnings = (o.warnings as string[]) ?? [];
+  if (warnings.length) {
+    lines.push("", "Assumptions / caveats:");
+    for (const w of warnings) lines.push(`- ${w}`);
+  }
+  return lines.join("\n");
+}
+
+// The headline figures the answer text MUST contain when a schedule exists.
+function keyFigures(results: CalcResult[]): number[] {
+  return results.flatMap((r) => {
+    const o = r.output as Record<string, unknown> | null;
+    if (!o || typeof o !== "object") return [];
+    const boxes = o.boxes as Record<string, number> | undefined;
+    return [
+      o.taxDue,
+      o.taxableIncome,
+      o.taxableIncomeBeforeLosses,
+      boxes?.netVatPayable,
+      boxes?.totalOutputVat,
+    ].filter((n): n is number => typeof n === "number" && n !== 0);
+  });
+}
 
 export async function answerQuestion(
   question: string,
@@ -32,10 +136,22 @@ export async function answerQuestion(
     attachedDocs?: { name: string; text: string }[];
   } = {},
 ): Promise<AnswerContract & { retrievedChunkIds: number[] }> {
-  const chunks = await getRelevantChunks(question, {
-    taxType: opts.taxType,
-    topK: 8,
-  });
+  // The user's own uploaded files (contract, invoice, notice…) as extra context.
+  const attached = opts.attachedDocs ?? [];
+  const attachedSection = attached.length
+    ? `\n\nATTACHED DOCUMENT(S) the user uploaded:\n\n${attached
+        .map((d) => `=== ${d.name} ===\n${d.text}`)
+        .join("\n\n---\n\n")}`
+    : "";
+
+  // Calculator phase FIRST, then retrieval — deliberately sequential. Both the
+  // calculator and retrieval's decompose step call the Gateway, and on the free
+  // tier two concurrent calls collide with the per-minute rate limit (the 429
+  // retry-backoff then eats the whole timeout).
+  const calc = needsComputation(question)
+    ? await runCalculators(question, attachedSection)
+    : null;
+  const chunks = await getRelevantChunks(question, { taxType: opts.taxType, topK: 8 });
 
   const context = chunks
     .map(
@@ -48,12 +164,9 @@ export async function answerQuestion(
     )
     .join("\n\n---\n\n");
 
-  // The user's own uploaded files (contract, invoice, notice…) as extra context.
-  const attached = opts.attachedDocs ?? [];
-  const attachedSection = attached.length
-    ? `\n\nATTACHED DOCUMENT(S) the user uploaded:\n\n${attached
-        .map((d) => `=== ${d.name} ===\n${d.text}`)
-        .join("\n\n---\n\n")}`
+  // Deterministic calculator output, injected as authoritative context.
+  const calcSection = calc
+    ? `\n\nCOMPUTED SCHEDULE (authoritative — restate these numbers exactly; do not recalculate):\n${JSON.stringify(calc, null, 1)}`
     : "";
 
   // Reasoning models (gpt-oss) occasionally emit malformed JSON, and routed
@@ -69,7 +182,9 @@ export async function answerQuestion(
         temperature: 0, // deterministic, auditable answers for the same question
         // Headroom for reasoning models (gpt-oss "thinks" in output tokens before
         // the JSON); non-reasoning models stop early, so this is just a ceiling.
-        maxOutputTokens: 2500,
+        // 2500 truncated long multi-part answers mid-JSON now that multi-query
+        // retrieval feeds up to 12 chunks of context.
+        maxOutputTokens: 4000,
         abortSignal: deadline,
         system: {
           role: "system",
@@ -80,7 +195,7 @@ export async function answerQuestion(
         },
         prompt: `Context (retrieved UAE tax provisions):\n\n${
           context || "(no passages retrieved)"
-        }${attachedSection}\n\nQuestion: ${question}`,
+        }${attachedSection}${calcSection}\n\nQuestion: ${question}`,
       }));
     } catch (e) {
       lastErr = e;
@@ -93,6 +208,32 @@ export async function answerQuestion(
   const validIds = new Set(chunks.map((c) => c.id));
   const citations = object.citations.filter((c) => validIds.has(c.chunkId));
   const result: AnswerContract = { ...object, citations };
+
+  // Smaller models sometimes leak internal "[chunkId:N]" tags into the prose
+  // despite the prompt rule — strip them so users never see them.
+  const stripTags = (s: string) =>
+    s.replace(/[【\[(]\s*chunkId:\s*\d+\s*[】\])]/gi, "").replace(/ {2,}/g, " ");
+  result.answer = stripTags(result.answer);
+  if (result.reasoning) result.reasoning = stripTags(result.reasoning);
+
+  // Arithmetic guard. If a computed schedule exists, the answer must contain
+  // its headline figures; if any is missing (the model "restated" it wrongly
+  // or dropped it), append the deterministic rendering so the user always sees
+  // the authoritative numbers.
+  if (calc && result.status === "answered") {
+    const digitsOnly = result.answer.replace(/[,\s  ]/g, "");
+    const missing = keyFigures(calc).some((n) => !digitsOnly.includes(String(n)));
+    if (missing) {
+      console.warn("[calc] answer text diverged from the computed schedule — appending it.");
+      result.answer += "\n" + calc.map(renderComputation).join("\n");
+    }
+  }
+  // A computational question answered with numbers but WITHOUT a successful
+  // calculator run means the model did its own arithmetic — don't let that
+  // carry "high" confidence.
+  if (!calc && needsComputation(question) && result.confidence === "high") {
+    result.confidence = "medium";
+  }
 
   // Normally an answered response with no grounded citation is forced to
   // escalate. But when the user attached documents, the answer may legitimately
@@ -122,6 +263,7 @@ export async function answerQuestion(
         result.status === "escalate" ? result.escalationReason ?? null : null,
       retrievedChunkIds,
       citations: result.citations,
+      computation: calc,
     });
   } catch (e) {
     console.warn("[answer] query_log insert failed:", (e as Error).message);
