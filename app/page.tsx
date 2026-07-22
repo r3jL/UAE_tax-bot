@@ -108,6 +108,50 @@ export default function Workspace() {
     }
   }, [messages, loading, module]);
 
+  // Window-level drag-and-drop: dragging files anywhere over the app raises a
+  // drop overlay; dropping stages them in the composer (and jumps to Ask if
+  // another module is open). A depth counter ignores child enter/leave churn.
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types?.includes("Files");
+    const onEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth.current++;
+      setDragActive(true);
+    };
+    const onOver = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault(); // required, or the browser opens the file
+    };
+    const onLeave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) setDragActive(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth.current = 0;
+      setDragActive(false);
+      const dropped = e.dataTransfer?.files;
+      if (dropped?.length) {
+        setFiles((prev) => mergeFiles(prev, Array.from(dropped)));
+        setModule("ask");
+      }
+    };
+    window.addEventListener("dragenter", onEnter);
+    window.addEventListener("dragover", onOver);
+    window.addEventListener("dragleave", onLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onEnter);
+      window.removeEventListener("dragover", onOver);
+      window.removeEventListener("dragleave", onLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
+
   async function send(text: string, filterOverride?: TaxFilter) {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
@@ -562,6 +606,44 @@ export default function Workspace() {
           }}
         />
       )}
+
+      {dragActive && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            background: "rgba(255,255,255,0.78)",
+            backdropFilter: "blur(3px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            animation: "lexfade .15s ease both",
+          }}
+        >
+          <div
+            style={{
+              border: "2px dashed #b9b9b2",
+              borderRadius: 22,
+              background: "#fff",
+              boxShadow: "0 14px 52px rgba(0,0,0,0.13)",
+              padding: "44px 60px",
+              textAlign: "center",
+              animation: "lexdroppop .2s ease both",
+            }}
+          >
+            <div style={{ fontSize: 36, lineHeight: 1, marginBottom: 12 }}>📄</div>
+            <div style={{ fontFamily: SERIF, fontSize: 21, fontWeight: 600 }}>
+              Drop files to attach
+            </div>
+            <div style={{ fontSize: 13, color: "#9a9a93", marginTop: 7, lineHeight: 1.5 }}>
+              PDF, image, Excel, CSV or Word — then ask about them
+              <br />
+              or run an invoice VAT check.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -937,6 +1019,18 @@ function TypingIndicator({ label = "Reviewing FTA law" }: { label?: string }) {
 }
 
 const MAX_FILES = 4;
+
+// Stage incoming files, deduped by name+size, capped at MAX_FILES. Shared by
+// the picker, and window-level drag-and-drop.
+function mergeFiles(prev: File[], incoming: File[]): File[] {
+  const merged = [...prev];
+  for (const f of incoming) {
+    if (merged.length >= MAX_FILES) break;
+    if (!merged.some((p) => p.name === f.name && p.size === f.size)) merged.push(f);
+  }
+  return merged;
+}
+
 const FILE_ACCEPT =
   "image/*,application/pdf,.xlsx,.csv,.tsv,.txt,.md,.docx," +
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
@@ -1048,14 +1142,7 @@ function Composer({
   function addFiles(list: FileList | null) {
     if (!list) return;
     const incoming = Array.from(list);
-    onFiles((prev) => {
-      const merged = [...prev];
-      for (const f of incoming) {
-        if (merged.length >= MAX_FILES) break;
-        if (!merged.some((p) => p.name === f.name && p.size === f.size)) merged.push(f);
-      }
-      return merged;
-    });
+    onFiles((prev) => mergeFiles(prev, incoming));
   }
 
   // Decide single-line vs layered AND size the visible textarea — both measured
@@ -1197,17 +1284,20 @@ function Composer({
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 6 }}>
             <button
               type="button"
+              className="lex-attach"
               onClick={() => fileRef.current?.click()}
               disabled={loading || atFileLimit}
-              title={atFileLimit ? `Up to ${MAX_FILES} files` : "Attach images or PDFs for context"}
+              title={
+                atFileLimit
+                  ? `Up to ${MAX_FILES} files`
+                  : "Attach files — PDF, image, Excel, CSV or Word"
+              }
               style={{
                 order: multiline ? 1 : 0,
                 flex: "none",
                 width: 34,
                 height: 34,
                 borderRadius: "50%",
-                border: "1px solid #e0e0db",
-                background: "#fff",
                 color: atFileLimit ? "#cdcdc8" : "#5a564d",
                 cursor: loading || atFileLimit ? "default" : "pointer",
                 display: "flex",
