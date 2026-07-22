@@ -118,7 +118,7 @@ export default function Workspace() {
   useEffect(() => {
     const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types?.includes("Files");
     const onEnter = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
+      if (!hasFiles(e) || invoiceModalRef.current) return; // modal has its own zone
       e.preventDefault();
       dragDepth.current++;
       setDragActive(true);
@@ -127,7 +127,7 @@ export default function Workspace() {
       if (hasFiles(e)) e.preventDefault(); // required, or the browser opens the file
     };
     const onLeave = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
+      if (!hasFiles(e) || invoiceModalRef.current) return;
       dragDepth.current = Math.max(0, dragDepth.current - 1);
       if (dragDepth.current === 0) setDragActive(false);
     };
@@ -136,6 +136,9 @@ export default function Workspace() {
       e.preventDefault();
       dragDepth.current = 0;
       setDragActive(false);
+      // While the popup is open its drop zone owns drops (it stops propagation);
+      // a drop anywhere else must not silently stage into the composer.
+      if (invoiceModalRef.current) return;
       const dropped = e.dataTransfer?.files;
       if (dropped?.length) {
         setFiles((prev) => mergeFiles(prev, Array.from(dropped)));
@@ -251,6 +254,13 @@ export default function Workspace() {
 
   // ── Inline invoice VAT checks (the merged Ask+Invoice workspace) ──────────
   const [invoiceBusy, setInvoiceBusy] = useState(false);
+  // "Invoice Upload" popup (from the + menu). The ref mirrors the state so the
+  // window drag listeners (bound once) can see it without re-binding.
+  const [invoiceModal, setInvoiceModal] = useState(false);
+  const invoiceModalRef = useRef(false);
+  useEffect(() => {
+    invoiceModalRef.current = invoiceModal;
+  }, [invoiceModal]);
 
   // Monotonic client-side key so in-flight cards can be updated in place
   // regardless of React's update batching.
@@ -289,12 +299,11 @@ export default function Workspace() {
     }
   }
 
-  // "Check VAT" on the staged files: each becomes its own card, sequentially
-  // (spaced to stay under free-tier per-minute limits).
-  async function runInvoiceChecks() {
-    const staged = files;
+  // Run checks on a set of files: each becomes its own card, sequentially
+  // (spaced to stay under free-tier per-minute limits). Fed by both the
+  // composer's "Check VAT" button and the Invoice Upload popup.
+  async function runInvoiceChecksOn(staged: File[]) {
     if (!staged.length || loading || invoiceBusy) return;
-    setFiles([]);
     setInvoiceBusy(true);
     try {
       for (let i = 0; i < staged.length; i++) {
@@ -304,6 +313,13 @@ export default function Workspace() {
     } finally {
       setInvoiceBusy(false);
     }
+  }
+
+  function runInvoiceChecks() {
+    const staged = files;
+    if (!staged.length) return;
+    setFiles([]);
+    void runInvoiceChecksOn(staged);
   }
 
   // Confirm & run: the fields card's button. Persists to the session so the
@@ -443,6 +459,7 @@ export default function Workspace() {
       onKeyDown={onKeyDown}
       onAsk={ask}
       onCheckVat={runInvoiceChecks}
+      onInvoiceUpload={() => setInvoiceModal(true)}
     />
   );
 
@@ -611,6 +628,16 @@ export default function Workspace() {
           onChosen={(u) => {
             setUsername(u);
             setChosen(true);
+          }}
+        />
+      )}
+
+      {invoiceModal && (
+        <InvoiceUploadModal
+          onClose={() => setInvoiceModal(false)}
+          onConfirm={(staged) => {
+            setInvoiceModal(false);
+            void runInvoiceChecksOn(staged);
           }}
         />
       )}
@@ -1044,6 +1071,201 @@ const FILE_ACCEPT =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,text/plain";
 
+// The "Invoice Upload" popup: pick or drop invoices, then Confirm hands them
+// to the same inline flow the thread already runs (extract → confirm fields →
+// cited treatment). Invoice pipeline accepts PDFs and images only.
+function InvoiceUploadModal({
+  onClose,
+  onConfirm,
+}: {
+  onClose: () => void;
+  onConfirm: (files: File[]) => void;
+}) {
+  const [staged, setStaged] = useState<File[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const add = (list: FileList | null) => {
+    if (list) setStaged((prev) => mergeFiles(prev, Array.from(list)));
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 70,
+        background: "rgba(20,20,18,0.28)",
+        backdropFilter: "blur(2px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        animation: "lexfade .15s ease both",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#fff",
+          borderRadius: 18,
+          boxShadow: "0 18px 60px rgba(0,0,0,0.2)",
+          width: "min(480px, 100%)",
+          padding: 22,
+          animation: "lexdroppop .2s ease both",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 600 }}>
+            Invoice VAT check
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              border: "none",
+              background: "none",
+              cursor: "pointer",
+              fontSize: 20,
+              color: "#a8a8a2",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div style={{ fontSize: 13, color: "#9a9a93", margin: "4px 0 14px", lineHeight: 1.5 }}>
+          Lex reads the invoice, you confirm the extracted fields, and the cited
+          treatment is checked against UAE VAT law.
+        </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf,image/*"
+          multiple
+          hidden
+          onChange={(e) => {
+            add(e.target.files);
+            e.target.value = "";
+          }}
+        />
+
+        <div
+          onClick={() => inputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOver(false);
+            add(e.dataTransfer.files);
+          }}
+          style={{
+            border: `2px dashed ${dragOver ? "#1a1a1a" : "#d6d6d0"}`,
+            borderRadius: 14,
+            background: dragOver ? "#f7f7f4" : "#fbfbfa",
+            padding: "26px 16px",
+            textAlign: "center",
+            cursor: "pointer",
+            transition: "border-color .15s ease, background .15s ease",
+          }}
+        >
+          <div style={{ fontSize: 26, lineHeight: 1, marginBottom: 8 }}>🧾</div>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+            Drop invoices here, or click to browse
+          </div>
+          <div style={{ fontSize: 12, color: "#9a9a93", marginTop: 4 }}>
+            PDF, JPG or PNG — scanned invoices as images. Up to {MAX_FILES} at once.
+          </div>
+        </div>
+
+        {staged.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 12 }}>
+            {staged.map((f, i) => (
+              <span
+                key={i}
+                title={f.name}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  maxWidth: 210,
+                  background: "#fafaf9",
+                  border: "1px solid #ececea",
+                  borderRadius: 10,
+                  padding: "5px 8px 5px 10px",
+                  fontSize: 12,
+                  color: "#5a564d",
+                }}
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {f.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setStaged((prev) => prev.filter((_, j) => j !== i))}
+                  aria-label={`Remove ${f.name}`}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    color: "#a8a8a2",
+                    fontSize: 14,
+                    lineHeight: 1,
+                    padding: 0,
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button
+            onClick={onClose}
+            style={{
+              border: "1px solid #e0e0db",
+              borderRadius: 99,
+              background: "#fff",
+              color: "#5a564d",
+              fontSize: 13,
+              fontWeight: 600,
+              padding: "9px 18px",
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => staged.length && onConfirm(staged)}
+            disabled={!staged.length}
+            style={{
+              border: "1px solid #1a1a1a",
+              borderRadius: 99,
+              background: staged.length ? "#1a1a1a" : "#f0efec",
+              color: staged.length ? "#fff" : "#9a9a93",
+              fontSize: 13,
+              fontWeight: 600,
+              padding: "9px 20px",
+              cursor: staged.length ? "pointer" : "default",
+            }}
+          >
+            Confirm{staged.length > 1 ? ` (${staged.length})` : ""}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // One inline invoice check in the thread: reading → confirm fields →
 // checking → cited treatment. Errors keep the card (and any edits) in place.
 function InvoiceCheckMessage({
@@ -1136,6 +1358,7 @@ function Composer({
   onKeyDown,
   onAsk,
   onCheckVat,
+  onInvoiceUpload,
 }: {
   q: string;
   loading: boolean;
@@ -1145,12 +1368,14 @@ function Composer({
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onAsk: () => void;
   onCheckVat: () => void;
+  onInvoiceUpload: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const mirrorRef = useRef<HTMLTextAreaElement>(null);
   const [multiline, setMultiline] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   function addFiles(list: FileList | null) {
     if (!list) return;
@@ -1295,15 +1520,87 @@ function Composer({
               takes the full top row and the buttons drop below. Switching is
               CSS-only (order/flex-basis) so the textarea keeps focus. */}
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 6 }}>
+            {menuOpen && (
+              <>
+                {/* click-away backdrop */}
+                <div
+                  onClick={() => setMenuOpen(false)}
+                  style={{ position: "fixed", inset: 0, zIndex: 40 }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: 48,
+                    left: 6,
+                    zIndex: 41,
+                    background: "#fff",
+                    border: "1px solid #ececea",
+                    borderRadius: 13,
+                    boxShadow: "0 10px 36px rgba(0,0,0,0.13)",
+                    padding: 6,
+                    minWidth: 250,
+                    animation: "lexrise .15s ease both",
+                  }}
+                >
+                  {(
+                    [
+                      {
+                        icon: "📎",
+                        title: "File Upload",
+                        desc: "Attach files as context for your question",
+                        onPick: () => fileRef.current?.click(),
+                      },
+                      {
+                        icon: "🧾",
+                        title: "Invoice Upload",
+                        desc: "Run a cited VAT check on an invoice",
+                        onPick: onInvoiceUpload,
+                      },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.title}
+                      type="button"
+                      className="lex-menu-item"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        item.onPick();
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        width: "100%",
+                        textAlign: "left",
+                        borderRadius: 9,
+                        padding: "9px 10px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span style={{ fontSize: 17, lineHeight: 1.2 }}>{item.icon}</span>
+                      <span>
+                        <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, color: "#1a1a1a" }}>
+                          {item.title}
+                        </span>
+                        <span style={{ display: "block", fontSize: 12, color: "#9a9a93", marginTop: 1 }}>
+                          {item.desc}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
             <button
               type="button"
               className="lex-attach"
-              onClick={() => fileRef.current?.click()}
+              onClick={() => setMenuOpen((v) => !v)}
               disabled={loading || atFileLimit}
               title={
                 atFileLimit
                   ? `Up to ${MAX_FILES} files`
-                  : "Attach files — PDF, image, Excel, CSV or Word"
+                  : "Add files or run an invoice VAT check"
               }
               style={{
                 order: multiline ? 1 : 0,

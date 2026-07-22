@@ -126,6 +126,16 @@ select:focus {
   }
 }
 
+/* Attach-menu rows (File Upload / Invoice Upload) — soft hover tint. */
+.lex-menu-item {
+  border: none;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+.lex-menu-item:hover {
+  background: #f4f4f1;
+}
+
 /* Drag-and-drop overlay: the drop panel pops in gently over the faded app. */
 @keyframes lexdroppop {
   from {
