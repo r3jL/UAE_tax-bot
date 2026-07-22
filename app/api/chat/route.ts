@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { answerQuestion } from "@/lib/ai/answer";
 import { extractFileText } from "@/lib/ai/extract-text";
+import { loadSessionContext } from "@/lib/ai/session-context";
 import { usernameFrom } from "@/lib/auth/user";
-import { appendMessage, createSession, ownsSession } from "@/lib/db/sessions";
+import {
+  addSessionFiles,
+  appendMessage,
+  createSession,
+  ownsSession,
+} from "@/lib/db/sessions";
 
 export const runtime = "nodejs";
 // Multi-part questions now run decompose + multi-query retrieval + rerank
@@ -65,16 +71,40 @@ export async function POST(req: NextRequest) {
     }
     const trimmed = question.trim();
 
+    // The files uploaded with THIS message — session files from earlier turns
+    // are merged into attachedDocs below, but only fresh ones get persisted.
+    const freshDocs = [...attachedDocs];
+    const freshFileNames = freshDocs.map((d) => d.name);
+
     // Persist the turn only for signed-in (non-guest) users. Best-effort: if the
     // DB write fails we still answer, just without saved history.
+    // ORDER MATTERS: load the session context (prior turns, summary, earlier
+    // uploads) BEFORE appending this turn, so the current question isn't
+    // duplicated into its own history.
     const username = usernameFrom(req);
+    let conversation:
+      | { summary: string | null; turns: { role: string; content: string }[] }
+      | undefined;
     if (username) {
       try {
         if (sessionId && !(await ownsSession(username, sessionId))) sessionId = undefined;
+        if (sessionId) {
+          const ctx = await loadSessionContext(sessionId);
+          conversation = { summary: ctx.summary, turns: ctx.turns };
+          // Earlier uploads stay referenceable for the whole chat: prepend them
+          // (oldest first) ahead of anything uploaded with THIS message.
+          const freshNames = new Set(attachedDocs.map((d) => d.name));
+          attachedDocs.unshift(...ctx.files.filter((f) => !freshNames.has(f.name)));
+          if (ctx.droppedFiles.length) {
+            conversation.summary =
+              `${conversation.summary ?? ""}\n[Files uploaded earlier but no longer in context: ${ctx.droppedFiles.join(", ")}]`.trim();
+          }
+        }
         if (!sessionId) sessionId = await createSession(username, trimmed);
         await appendMessage(sessionId, "user", trimmed, {
-          files: attachedDocs.map((d) => d.name),
+          files: freshFileNames,
         });
+        if (freshDocs.length) await addSessionFiles(sessionId, freshDocs);
       } catch (e) {
         console.warn("[chat] session persist (user turn) failed:", (e as Error).message);
         sessionId = undefined;
@@ -86,6 +116,7 @@ export async function POST(req: NextRequest) {
     const result = await answerQuestion(trimmed, {
       taxType,
       attachedDocs,
+      conversation,
       username,
       sessionId,
     });

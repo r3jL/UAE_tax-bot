@@ -784,7 +784,10 @@ function TypingIndicator({ label = "Reviewing FTA law" }: { label?: string }) {
 }
 
 const MAX_FILES = 4;
-const FILE_ACCEPT = "image/*,application/pdf";
+const FILE_ACCEPT =
+  "image/*,application/pdf,.xlsx,.csv,.tsv,.txt,.md,.docx," +
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,text/plain";
 
 function Composer({
   q,

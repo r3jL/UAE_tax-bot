@@ -1,6 +1,6 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "./index";
-import { chatMessages, chatSessions } from "./schema";
+import { chatMessages, chatSessions, sessionFiles } from "./schema";
 
 export type ChatRole = "user" | "assistant" | "reviewer";
 
@@ -84,7 +84,69 @@ export async function getSessionMessages(username: string, sessionId: number) {
 // query_log rows keep their session_id as a soft pointer — harmless if dangling.
 export async function deleteSession(username: string, sessionId: number): Promise<boolean> {
   if (!(await ownsSession(username, sessionId))) return false;
+  await db.delete(sessionFiles).where(eq(sessionFiles.sessionId, sessionId));
   await db.delete(chatMessages).where(eq(chatMessages.sessionId, sessionId));
   await db.delete(chatSessions).where(eq(chatSessions.id, sessionId));
   return true;
+}
+
+// ── Session context for the answer engine ────────────────────────────────────
+
+// Persist extracted upload text so later turns in this session can use it.
+export async function addSessionFiles(
+  sessionId: number,
+  docs: { name: string; text: string }[],
+): Promise<void> {
+  if (!docs.length) return;
+  await db
+    .insert(sessionFiles)
+    .values(docs.map((d) => ({ sessionId, name: d.name, text: d.text })));
+}
+
+// All files ever uploaded to this session, oldest first.
+export async function getSessionFiles(sessionId: number) {
+  return db
+    .select({ name: sessionFiles.name, text: sessionFiles.text })
+    .from(sessionFiles)
+    .where(eq(sessionFiles.sessionId, sessionId))
+    .orderBy(asc(sessionFiles.createdAt));
+}
+
+// Prior user/assistant turns (reviewer turns included — they're authoritative
+// answers), oldest first, as plain {role, content} for the model.
+export async function getSessionTurns(sessionId: number) {
+  return db
+    .select({
+      id: chatMessages.id,
+      role: chatMessages.role,
+      content: chatMessages.content,
+    })
+    .from(chatMessages)
+    .where(eq(chatMessages.sessionId, sessionId))
+    .orderBy(asc(chatMessages.createdAt));
+}
+
+export async function getSessionSummary(
+  sessionId: number,
+): Promise<{ summary: string | null; summarizedUpTo: number | null }> {
+  const [row] = await db
+    .select({
+      summary: chatSessions.summary,
+      summarizedUpTo: chatSessions.summarizedUpTo,
+    })
+    .from(chatSessions)
+    .where(eq(chatSessions.id, sessionId))
+    .limit(1);
+  return { summary: row?.summary ?? null, summarizedUpTo: row?.summarizedUpTo ?? null };
+}
+
+export async function setSessionSummary(
+  sessionId: number,
+  summary: string,
+  summarizedUpTo: number,
+): Promise<void> {
+  await db
+    .update(chatSessions)
+    .set({ summary, summarizedUpTo })
+    .where(eq(chatSessions.id, sessionId));
 }

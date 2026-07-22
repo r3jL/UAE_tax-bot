@@ -115,10 +115,34 @@ export const chatSessions = pgTable(
     id: serial("id").primaryKey(),
     username: varchar("username", { length: 64 }).notNull(),
     title: text("title").notNull().default("New chat"),
+    // Rolling compaction summary: once the conversation outgrows the history
+    // budget, older turns are folded into this and only recent turns are sent
+    // verbatim (Claude-style auto-compact). summarizedUpTo is the id of the
+    // last chat_messages row already folded in — the watermark that stops
+    // every later turn from re-paying the compaction call.
+    summary: text("summary"),
+    summarizedUpTo: integer("summarized_up_to"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (t) => [index("chat_sessions_user_idx").on(t.username, t.updatedAt)],
+);
+
+// Extracted text of files uploaded to a session — so the bot can keep
+// referencing an uploaded contract/spreadsheet in every later turn of that
+// chat, not just the turn it was attached to. Raw bytes are never stored.
+export const sessionFiles = pgTable(
+  "session_files",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id")
+      .references(() => chatSessions.id)
+      .notNull(),
+    name: text("name").notNull(),
+    text: text("text").notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [index("session_files_session_idx").on(t.sessionId, t.createdAt)],
 );
 
 // One message in a session. role='reviewer' is a human answer sent back from

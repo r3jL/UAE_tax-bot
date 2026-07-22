@@ -181,6 +181,28 @@ async function main() {
       ADD COLUMN IF NOT EXISTS reviewed_at timestamp
   `;
 
+  // --- Session file context + compaction summary ---
+  // chat_sessions.summary: rolling compaction of older turns.
+  await sql`
+    ALTER TABLE chat_sessions
+      ADD COLUMN IF NOT EXISTS summary text,
+      ADD COLUMN IF NOT EXISTS summarized_up_to integer
+  `;
+  // session_files: extracted text of uploads, referenceable all session long.
+  await sql`
+    CREATE TABLE IF NOT EXISTS session_files (
+      id serial PRIMARY KEY,
+      session_id integer NOT NULL REFERENCES chat_sessions(id),
+      name text NOT NULL,
+      text text NOT NULL,
+      created_at timestamp DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS session_files_session_idx
+      ON session_files (session_id, created_at)
+  `;
+
   console.log(
     "Additive migration applied: lifecycle columns, law_changes, tax_parameters, query_log review-queue fields, chat_sessions, chat_messages, notifications.",
   );

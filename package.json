@@ -16,7 +16,7 @@
     "db:seed-params": "tsx scripts/seed-parameters.ts",
     "ingest": "tsx scripts/ingest.ts",
     "eval": "tsx scripts/eval.ts",
-    "test": "tsx --test lib/tax/*.test.ts"
+    "test": "tsx --test lib/tax/*.test.ts lib/ai/*.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.51",
@@ -25,6 +25,8 @@
     "ai": "^6.0.208",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
+    "exceljs": "^4.4.0",
+    "mammoth": "^1.12.0",
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",

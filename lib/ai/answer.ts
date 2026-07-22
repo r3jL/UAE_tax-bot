@@ -22,7 +22,9 @@ NON-NEGOTIABLE RULES:
 7. In "reasoning", give a short, plain-language explanation a finance colleague can follow — not a legal brief. For multi-part questions, address each part. Reference provisions by name, not chunkId.
 8. Sources carry a "type" showing legal authority. When passages conflict, the controlling order is: decree_law > cabinet_decision > ministerial_decision > fta_decision > public_clarification / fta_guide. Rely on the higher-authority provision and cite it; a guide or clarification may support the explanation, not override the rule.
 
-ATTACHED DOCUMENTS: The user may upload their own document(s) — a contract, invoice, tax notice, etc. When present, their text appears under "ATTACHED DOCUMENT(S)" in the context. Use them to answer questions about their specifics, and apply the UAE tax provisions to them. You may quote the attached document directly. Ground any conclusion about the LAW in the provided provisions and cite their chunkId; facts that come only from the attached document don't need a chunkId. If a document is attached but unreadable or irrelevant to the question, say so plainly.
+CONVERSATION: A "CONVERSATION SO FAR" block may precede the context — the prior turns of this chat (and a summary of older ones). The current question may refer back to it ("that invoice", "recompute with…"). Use it to resolve references, but answer the CURRENT question; legal grounding still comes only from the provided passages.
+
+ATTACHED DOCUMENTS: The user may upload their own document(s) — a contract, invoice, tax notice, etc. When present, their text appears under "ATTACHED DOCUMENT(S)" in the context — including files uploaded in EARLIER turns of this chat, which remain fully usable. Use them to answer questions about their specifics, and apply the UAE tax provisions to them. You may quote the attached document directly. Ground any conclusion about the LAW in the provided provisions and cite their chunkId; facts that come only from the attached document don't need a chunkId. If a document is attached but unreadable or irrelevant to the question, say so plainly.
 
 COMPUTED SCHEDULE: When the context includes a "COMPUTED SCHEDULE" block, its numbers were produced by a deterministic calculator and are AUTHORITATIVE. Present those figures exactly as given — restate them, never recalculate, re-derive, or "correct" them. Surface every warning in the schedule to the user (as assumptions/caveats). Your own arithmetic is not trusted.
 
@@ -56,6 +58,7 @@ interface CalcResult {
 async function runCalculators(
   question: string,
   attachedSection: string,
+  conversationSection = "",
 ): Promise<CalcResult[] | null> {
   try {
     const res = await generateText({
@@ -65,7 +68,7 @@ async function runCalculators(
       temperature: 0,
       abortSignal: AbortSignal.timeout(60_000),
       system: CALC_SYSTEM,
-      prompt: `${question}${attachedSection}`,
+      prompt: `${conversationSection}${question}${attachedSection}`,
     });
     const results: CalcResult[] = res.steps
       .flatMap((s) => s.toolResults ?? [])
@@ -134,6 +137,11 @@ export async function answerQuestion(
   opts: {
     taxType?: "CT" | "VAT";
     attachedDocs?: { name: string; text: string }[];
+    // Prior context of this chat: compaction summary + recent verbatim turns.
+    conversation?: {
+      summary: string | null;
+      turns: { role: string; content: string }[];
+    };
     // Identity, so an escalation can be routed back to the asker's session.
     username?: string | null;
     sessionId?: number | null;
@@ -147,14 +155,30 @@ export async function answerQuestion(
         .join("\n\n---\n\n")}`
     : "";
 
+  const convo = opts.conversation;
+  const conversationSection =
+    convo && (convo.summary || convo.turns.length)
+      ? `CONVERSATION SO FAR (the current question may refer back to this):\n${
+          convo.summary ? `[Summary of earlier discussion]\n${convo.summary}\n\n` : ""
+        }${convo.turns.map((t) => `${t.role.toUpperCase()}: ${t.content}`).join("\n\n")}\n\n`
+      : "";
+
+  // Short follow-ups ("is that recoverable?") embed to nothing useful on their
+  // own — anchor the retrieval query with the last substantive user turn.
+  const lastUserTurn = [...(convo?.turns ?? [])].reverse().find((t) => t.role === "user");
+  const retrievalQuery =
+    question.length < 120 && lastUserTurn
+      ? `${lastUserTurn.content.slice(0, 500)}\nFollow-up: ${question}`
+      : question;
+
   // Calculator phase FIRST, then retrieval — deliberately sequential. Both the
   // calculator and retrieval's decompose step call the Gateway, and on the free
   // tier two concurrent calls collide with the per-minute rate limit (the 429
   // retry-backoff then eats the whole timeout).
-  const calc = needsComputation(question)
-    ? await runCalculators(question, attachedSection)
+  const calc = needsComputation(question + (lastUserTurn?.content ?? ""))
+    ? await runCalculators(question, attachedSection, conversationSection)
     : null;
-  const chunks = await getRelevantChunks(question, { taxType: opts.taxType, topK: 8 });
+  const chunks = await getRelevantChunks(retrievalQuery, { taxType: opts.taxType, topK: 8 });
 
   const context = chunks
     .map(
@@ -196,7 +220,7 @@ export async function answerQuestion(
           // don't re-bill it. Harmlessly ignored by providers that don't support it.
           providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
         },
-        prompt: `Context (retrieved UAE tax provisions):\n\n${
+        prompt: `${conversationSection}Context (retrieved UAE tax provisions):\n\n${
           context || "(no passages retrieved)"
         }${attachedSection}${calcSection}\n\nQuestion: ${question}`,
       }));
